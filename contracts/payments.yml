@@ -1,0 +1,13 @@
+dataset: payments
+primary_key: order_id
+quality_threshold: 0.95
+columns:
+  order_id:
+    required: true
+  payment_sequential:
+    required: true
+  payment_type:
+    required: true
+  payment_value:
+    required: true
+    min_value: 0

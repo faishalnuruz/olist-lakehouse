@@ -1,0 +1,59 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:datacontract:olist-lakehouse:orders-silver
+name: Olist Silver Orders
+version: 1.0.0
+status: active
+description:
+  purpose: Trusted, one-record-per-order input for e-commerce reporting.
+  usage: Used by Gold sales and delivery-performance marts.
+  limitations: Rows violating the raw-source contract are retained only in the quarantine layer.
+team:
+  name: Data Platform
+  members:
+    - username: portfolio-owner
+      role: Owner
+servers:
+  - server: local
+    type: local
+    format: parquet
+    path: ./data/processed/silver/orders.parquet
+schema:
+  - name: orders
+    description: Validated order lifecycle records.
+    quality:
+      - id: orders_not_empty
+        type: library
+        metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        tags: [critical]
+    properties:
+      - name: order_id
+        logicalType: string
+        required: true
+        unique: true
+        primaryKey: true
+      - name: customer_id
+        logicalType: string
+        required: true
+      - name: order_status
+        logicalType: string
+        required: true
+        enum:
+          - value: created
+          - value: approved
+          - value: invoiced
+          - value: processing
+          - value: shipped
+          - value: delivered
+          - value: unavailable
+          - value: canceled
+      - name: order_purchase_timestamp
+        logicalType: timestamp
+        required: true
+      - name: order_delivered_customer_date
+        logicalType: timestamp
+      - name: _ingested_at
+        logicalType: timestamp
+        required: true

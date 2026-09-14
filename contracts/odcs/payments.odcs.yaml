@@ -1,0 +1,47 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:datacontract:olist-lakehouse:payments-silver
+name: Olist Silver Payments
+version: 1.0.0
+status: active
+description:
+  purpose: Trusted payment records for valid Olist orders.
+  usage: Used to calculate daily GMV and average order value.
+team:
+  name: Data Platform
+  members:
+    - username: portfolio-owner
+      role: Owner
+servers:
+  - server: local
+    type: local
+    format: parquet
+    path: ./data/processed/silver/payments.parquet
+schema:
+  - name: payments
+    description: Validated payment records; an order may have multiple payments.
+    quality:
+      - id: payments_not_empty
+        type: library
+        metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        tags: [critical]
+    properties:
+      - name: order_id
+        logicalType: string
+        required: true
+      - name: payment_sequential
+        logicalType: integer
+        required: true
+      - name: payment_type
+        logicalType: string
+        required: true
+      - name: payment_value
+        logicalType: number
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+      - name: _ingested_at
+        logicalType: timestamp
+        required: true

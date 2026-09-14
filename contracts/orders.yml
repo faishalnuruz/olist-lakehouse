@@ -1,0 +1,29 @@
+dataset: orders
+primary_key: order_id
+quality_threshold: 0.95
+columns:
+  order_id:
+    required: true
+    unique: true
+  customer_id:
+    required: true
+  order_status:
+    required: true
+    allowed_values:
+      - created
+      - approved
+      - invoiced
+      - processing
+      - shipped
+      - delivered
+      - unavailable
+      - canceled
+  order_purchase_timestamp:
+    required: true
+    type: timestamp
+  order_delivered_customer_date:
+    type: timestamp
+rules:
+  - name: delivery_after_purchase
+    expression: order_delivered_customer_date >= order_purchase_timestamp
+    severity: warning

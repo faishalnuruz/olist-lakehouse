@@ -1,0 +1,26 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Keep only a tiny, documented sample in Git.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/quarantine/*
+!data/quarantine/.gitkeep
+data/checkpoints/*
+!data/checkpoints/.gitkeep
+
+# Runtime artifacts
+spark-warehouse/
+metastore_db/
+logs/
