@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olist lakehouse — data quality and business outcomes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<style>
+  :root {
+    --ink: #0d1520;
+    --paper: #f3f5f8;
+    --surface: #ffffff;
+    --rule: #dce1e8;
+    --grid: #e8ecf1;
+    --text: #1b2431;
+    --muted: #5b6675;
+    --blue: #1b48e0;
+    --blue-soft: rgba(27, 72, 224, 0.08);
+    --pass: #0e7a5a;
+    --warn: #b4740b;
+    --fail: #bc2e28;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; }
+  p { margin: 0; }
+
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    background: var(--ink);
+    color: #f4f7fb;
+    padding: 26px 0 20px;
+    border-bottom: 3px solid var(--blue);
+  }
+
+  .masthead__grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .masthead__repo {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #8fa2bd;
+    margin-bottom: 6px;
+  }
+
+  .masthead__sub { color: #a9b6ca; font-size: 14px; margin-top: 6px; }
+
+  .breaker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 2px;
+    font-size: 14px;
+  }
+
+  .breaker__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--pass);
+    box-shadow: 0 0 0 3px rgba(14, 122, 90, 0.3);
+    flex: none;
+  }
+
+  .breaker[data-state="open"] .breaker__dot {
+    background: var(--fail);
+    box-shadow: 0 0 0 3px rgba(188, 46, 40, 0.35);
+  }
+
+  .breaker__label { color: #a9b6ca; }
+  .breaker__value { font-weight: 600; }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 44px;
+    margin: 22px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .fact dt { font-size: 12.5px; color: #8fa2bd; margin-bottom: 3px; }
+  .fact dd { margin: 0; font-family: var(--mono); font-size: 14.5px; }
+  .fact__note { display: block; font-family: var(--sans); font-size: 12px; color: #8fa2bd; }
+
+  /* ---------- sections ---------- */
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 26px 28px 30px;
+    margin-top: 22px;
+  }
+
+  .section__head { margin-bottom: 22px; }
+  .section__head p { color: var(--muted); font-size: 14px; margin-top: 5px; max-width: 74ch; }
+
+  .subhead {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  /* ---------- quality score ---------- */
+
+  .score {
+    display: grid;
+    grid-template-columns: 170px 176px minmax(220px, 1fr) 320px;
+    gap: 26px;
+    align-items: center;
+    padding: 20px 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .score:first-of-type { border-top: none; padding-top: 4px; }
+
+  .score__name { font-family: var(--mono); font-size: 15.5px; font-weight: 500; }
+  .score__threshold { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+  .score__value { font-family: var(--mono); font-size: 31px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .score__value small { display: block; font-family: var(--sans); font-size: 12.5px; font-weight: 400; color: var(--muted); }
+
+  .gauge { position: relative; padding-top: 17px; }
+
+  .gauge__track {
+    position: relative;
+    height: 14px;
+    background: var(--grid);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .gauge__fill { height: 100%; background: var(--pass); }
+  .score[data-failed="true"] .gauge__fill { background: var(--fail); }
+
+  /* Sibling of the clipped track so the marker and its label stay visible. */
+  .gauge__notch {
+    position: absolute;
+    left: 95%;
+    top: 11px;
+    width: 2px;
+    height: 26px;
+    background: var(--fail);
+    z-index: 2;
+  }
+
+  .gauge__notch span {
+    position: absolute;
+    top: -15px;
+    right: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fail);
+    white-space: nowrap;
+  }
+
+  .gauge__ends {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  .stat__value { font-family: var(--mono); font-size: 17px; font-weight: 500; }
+  .stat__value--fail { color: var(--fail); }
+  .stat__value--warn { color: var(--warn); }
+  .stat__label { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+  /* ---------- data operations ---------- */
+
+  .split { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.15fr); gap: 34px; }
+
+  .rulebar { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+  .rulebar__row { display: grid; grid-template-columns: 1fr; gap: 5px; }
+  .rulebar__label { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
+  .rulebar__reason { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  .rulebar__dataset { font-size: 11.5px; color: var(--muted); }
+  .rulebar__count { font-family: var(--mono); font-size: 13px; }
+  .rulebar__track { height: 8px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+  .rulebar__fill { height: 100%; background: var(--fail); }
+  .rulebar__fill--warn { background: var(--warn); }
+
+  .note {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--warn);
+    background: #fdf7ec;
+    font-size: 13.5px;
+    color: #6a4a08;
+  }
+
+  .note--pass { border-left-color: var(--pass); background: #eef7f3; color: #0b5843; }
+
+  /* ---------- tables ---------- */
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+
+  .table-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    padding-bottom: 8px;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+    padding: 6px 16px 6px 0;
+  }
+
+  td {
+    padding: 7px 16px 7px 0;
+    border-bottom: 1px solid var(--grid);
+    vertical-align: top;
+  }
+
+  th:last-child, td:last-child { padding-right: 0; }
+
+  td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  td.reason { font-family: var(--mono); font-size: 12.5px; color: var(--fail); overflow-wrap: anywhere; }
+
+  .table-note {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 10px;
+    max-width: 62ch;
+  }
+
+  .empty {
+    border: 1px dashed var(--rule);
+    color: var(--muted);
+    font-size: 13.5px;
+    padding: 14px 16px;
+  }
+
+  .table-stack { display: grid; gap: 24px; }
+
+  /* ---------- business outcomes ---------- */
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 26px;
+  }
+
+  .kpi { padding: 16px 20px 16px 0; border-left: 1px solid var(--rule); padding-left: 20px; }
+  .kpi:first-child { border-left: none; padding-left: 0; }
+  .kpi__value { font-family: var(--mono); font-size: 23px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kpi__label { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+  .chart-box { position: relative; height: 250px; }
+  .chart-box--tall { height: 270px; }
+
+  .duo { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1fr); gap: 34px; margin-top: 30px; }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 26px 0 44px;
+    max-width: 86ch;
+  }
+
+  footer p + p { margin-top: 6px; }
+  footer code { font-family: var(--mono); font-size: 12.5px; }
+
+  @media (max-width: 980px) {
+    .score { grid-template-columns: 1fr 1fr; gap: 16px 26px; }
+    .score .gauge { grid-column: 1 / -1; }
+    .stats { grid-column: 1 / -1; }
+    .split, .duo { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi { border-left: none; padding-left: 0; border-top: 1px solid var(--rule); }
+    .kpi:first-child { border-top: none; }
+  }
+
+  @media (max-width: 620px) {
+    .score { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .kpis { grid-template-columns: 1fr; }
+    .section { padding: 20px 18px 24px; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .section { break-inside: avoid; border-color: #ccc; }
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="masthead__grid">
+      <div>
+        <div class="masthead__repo">olist-lakehouse</div>
+        <h1>Data quality and business outcomes</h1>
+        <p class="masthead__sub">Bronze, quarantine, Silver, and Gold over the Olist e-commerce extract.</p>
+      </div>
+      <div class="breaker" id="breaker" data-state="closed">
+        <span class="breaker__dot" aria-hidden="true"></span>
+        <span>
+          <span class="breaker__label">Circuit breaker</span><br>
+          <span class="breaker__value" id="breaker-value">—</span>
+        </span>
+      </div>
+    </div>
+    <dl class="facts" id="facts"></dl>
+  </div>
+</header>
+
+<main class="wrap">
+  <noscript><p class="section">This dashboard renders its numbers with JavaScript. Please enable it.</p></noscript>
+
+  <section class="section" aria-labelledby="score-heading">
+    <div class="section__head">
+      <h2 id="score-heading">Quality score</h2>
+      <p>Valid rows per dataset, measured against the circuit-breaker threshold. A run below the threshold publishes Bronze, quarantine, and this report, then stops before overwriting Silver and Gold.</p>
+    </div>
+    <div id="scores"></div>
+  </section>
+
+  <section class="section" aria-labelledby="ops-heading">
+    <div class="section__head">
+      <h2 id="ops-heading">Data operations</h2>
+      <p>What the contract rejected in this run, with the rejected rows kept as evidence in <code>data/quarantine/</code>.</p>
+    </div>
+    <div class="split">
+      <div>
+        <h3 class="subhead">Failed rules</h3>
+        <div class="rulebar" id="rules"></div>
+        <div id="ops-notes"></div>
+      </div>
+      <div class="table-stack">
+        <div id="sample-orders"></div>
+        <div id="sample-payments"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="outcomes-heading">
+    <div class="section__head">
+      <h2 id="outcomes-heading">Business outcomes</h2>
+      <p>What the trusted rows produce once they reach Gold: daily sales, order volume, and delivery performance.</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+
+    <h3 class="subhead">Gross merchandise value per day</h3>
+    <div class="chart-box"><canvas id="gmv-chart" role="img" aria-label="Daily gross merchandise value line chart"></canvas></div>
+
+    <div class="duo">
+      <div>
+        <h3 class="subhead">Orders by status</h3>
+        <div class="chart-box chart-box--tall"><canvas id="status-chart" role="img" aria-label="Orders by status, logarithmic scale"></canvas></div>
+      </div>
+      <div>
+        <h3 class="subhead">Delivery performance by status</h3>
+        <div id="delivery-table"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Generated <span id="generated-at" class="num">—</span> from the artifacts of the run shown above. Every figure on this page comes from <code>data/processed/quality_report.json</code> and the Gold Parquet tables, never from manual entry.</p>
+    <p>Contracts are versioned in <code>contracts/odcs/</code> and tested against the Silver tables by <code>scripts/validate_contracts.sh</code>. Source data: Brazilian E-Commerce Public Dataset by Olist, downloaded from Kaggle.</p>
+  </footer>
+</main>
+
+<script>
+  window.__DASHBOARD__ = {"run": {"run_at": "2026-10-22T10:50:21.093621+00:00", "duration_seconds": 2.337, "circuit_breaker": "closed", "input_directory": "olist_demo", "threshold": 0.95, "gold_marts": {"daily_sales_rows": 614, "delivery_performance_rows": 8}}, "datasets": [{"dataset": "orders", "total_rows": 99446, "valid_rows": 99437, "quarantined_rows": 9, "valid_row_rate": 0.999909, "quality_threshold": 0.95, "threshold_passed": true, "warning_count": 1, "failure_counts": {"duplicate:order_id": 6, "required:order_id": 1, "duplicate:order_id;invalid_value:order_status": 1, "duplicate:order_id;required:order_purchase_timestamp": 1}}, {"dataset": "payments", "total_rows": 103887, "valid_rows": 103886, "quarantined_rows": 1, "valid_row_rate": 0.99999, "quality_threshold": 0.95, "threshold_passed": true, "warning_count": 0, "failure_counts": {"below_minimum:payment_value": 1}}], "quarantine_samples": {"orders": [{"order_id": "e481f51cbdc54678b7cc49136f2d6af7", "order_status": "delivered", "failure_reason": "duplicate:order_id"}, {"order_id": "53cdb2fc8bc7dce0b6741e2150273451", "order_status": "delivered", "failure_reason": "duplicate:order_id"}, {"order_id": "47770eb9100c2d0c44946d9cf07ec65d", "order_status": "delivered", "failure_reason": "duplicate:order_id"}, {"order_id": "ad21c59c0840e6cb83a9ceb5573f8159", "order_status": "delivered", "failure_reason": "duplicate:order_id"}, {"order_id": "\u2014", "order_status": "delivered", "failure_reason": "required:order_id"}, {"order_id": "53cdb2fc8bc7dce0b6741e2150273451", "order_status": "teleported", "failure_reason": "duplicate:order_id;invalid_value:order_status"}], "payments": [{"order_id": "b81ef226f3fe1789b1e8b2acac839d17", "payment_value": "-50.00", "failure_reason": "below_minimum:payment_value"}]}, "daily_sales": [{"order_date": "2016-09-04", "order_count": 1, "gross_merchandise_value": 136.23, "average_order_value": 136.23, "average_delivery_days": null}, {"order_date": "2016-09-15", "order_count": 1, "gross_merchandise_value": 0.0, "average_order_value": 0.0, "average_delivery_days": 55.0}, {"order_date": "2016-10-03", "order_count": 7, "gross_merchandise_value": 559.53, "average_order_value": 79.93, "average_delivery_days": 25.29}, {"order_date": "2016-10-04", "order_count": 58, "gross_merchandise_value": 10900.95, "average_order_value": 187.95, "average_delivery_days": 28.11}, {"order_date": "2016-10-05", "order_count": 42, "gross_merchandise_value": 8311.94, "average_order_value": 197.9, "average_delivery_days": 21.11}, {"order_date": "2016-10-06", "order_count": 46, "gross_merchandise_value": 7261.3, "average_order_value": 157.85, "average_delivery_days": 20.9}, {"order_date": "2016-10-07", "order_count": 43, "gross_merchandise_value": 7609.59, "average_order_value": 176.97, "average_delivery_days": 16.77}, {"order_date": "2016-10-08", "order_count": 38, "gross_merchandise_value": 9226.19, "average_order_value": 242.79, "average_delivery_days": 14.14}, {"order_date": "2016-10-09", "order_count": 22, "gross_merchandise_value": 3294.64, "average_order_value": 149.76, "average_delivery_days": 14.55}, {"order_date": "2016-10-10", "order_count": 37, "gross_merchandise_value": 4493.39, "average_order_value": 121.44, "average_delivery_days": 19.35}, {"order_date": "2016-12-23", "order_count": 1, "gross_merchandise_value": 19.62, "average_order_value": 19.62, "average_delivery_days": 5.0}, {"order_date": "2017-01-05", "order_count": 32, "gross_merchandise_value": 707.27, "average_order_value": 22.1, "average_delivery_days": 10.81}, {"order_date": "2017-01-06", "order_count": 4, "gross_merchandise_value": 988.28, "average_order_value": 247.07, "average_delivery_days": 9.38}, {"order_date": "2017-01-07", "order_count": 4, "gross_merchandise_value": 1447.99, "average_order_value": 362.0, "average_delivery_days": 24.25}, {"order_date": "2017-01-08", "order_count": 6, "gross_merchandise_value": 809.63, "average_order_value": 134.94, "average_delivery_days": 8.25}, {"order_date": "2017-01-09", "order_count": 5, "gross_merchandise_value": 774.51, "average_order_value": 154.9, "average_delivery_days": 23.6}, {"order_date": "2017-01-10", "order_count": 6, "gross_merchandise_value": 1571.17, "average_order_value": 261.86, "average_delivery_days": 12.67}, {"order_date": "2017-01-11", "order_count": 11, "gross_merchandise_value": 2881.52, "average_order_value": 261.96, "average_delivery_days": 7.4}, {"order_date": "2017-01-12", "order_count": 13, "gross_merchandise_value": 2502.69, "average_order_value": 192.51, "average_delivery_days": 24.5}, {"order_date": "2017-01-13", "order_count": 11, "gross_merchandise_value": 2780.72, "average_order_value": 252.79, "average_delivery_days": 9.6}, {"order_date": "2017-01-14", "order_count": 18, "gross_merchandise_value": 1507.36, "average_order_value": 83.74, "average_delivery_days": 15.44}, {"order_date": "2017-01-15", "order_count": 14, "gross_merchandise_value": 2551.34, "average_order_value": 182.24, "average_delivery_days": 12.93}, {"order_date": "2017-01-16", "order_count": 19, "gross_merchandise_value": 3712.24, "average_order_value": 195.38, "average_delivery_days": 12.22}, {"order_date": "2017-01-17", "order_count": 32, "gross_merchandise_value": 3893.61, "average_order_value": 121.68, "average_delivery_days": 13.07}, {"order_date": "2017-01-18", "order_count": 33, "gross_merchandise_value": 4683.38, "average_order_value": 141.92, "average_delivery_days": 13.28}, {"order_date": "2017-01-19", "order_count": 29, "gross_merchandise_value": 4140.16, "average_order_value": 142.76, "average_delivery_days": 12.48}, {"order_date": "2017-01-20", "order_count": 28, "gross_merchandise_value": 4656.05, "average_order_value": 166.29, "average_delivery_days": 12.07}, {"order_date": "2017-01-21", "order_count": 24, "gross_merchandise_value": 3094.76, "average_order_value": 128.95, "average_delivery_days": 13.05}, {"order_date": "2017-01-22", "order_count": 30, "gross_merchandise_value": 4141.87, "average_order_value": 138.06, "average_delivery_days": 9.47}, {"order_date": "2017-01-23", "order_count": 39, "gross_merchandise_value": 7553.89, "average_order_value": 193.69, "average_delivery_days": 13.36}, {"order_date": "2017-01-24", "order_count": 40, "gross_merchandise_value": 6794.5, "average_order_value": 169.86, "average_delivery_days": 11.64}, {"order_date": "2017-01-25", "order_count": 62, "gross_merchandise_value": 10340.19, "average_order_value": 166.78, "average_delivery_days": 11.78}, {"order_date": "2017-01-26", "order_count": 84, "gross_merchandise_value": 15047.41, "average_order_value": 179.14, "average_delivery_days": 13.56}, {"order_date": "2017-01-27", "order_count": 61, "gross_merchandise_value": 12756.14, "average_order_value": 209.12, "average_delivery_days": 12.84}, {"order_date": "2017-01-28", "order_count": 29, "gross_merchandise_value": 5909.98, "average_order_value": 203.79, "average_delivery_days": 12.26}, {"order_date": "2017-01-29", "order_count": 35, "gross_merchandise_value": 7160.66, "average_order_value": 204.59, "average_delivery_days": 13.94}, {"order_date": "2017-01-30", "order_count": 51, "gross_merchandise_value": 11911.91, "average_order_value": 233.57, "average_delivery_days": 11.38}, {"order_date": "2017-01-31", "order_count": 67, "gross_merchandise_value": 12687.53, "average_order_value": 189.37, "average_delivery_days": 13.43}, {"order_date": "2017-02-01", "order_count": 66, "gross_merchandise_value": 9432.66, "average_order_value": 142.92, "average_delivery_days": 12.22}, {"order_date": "2017-02-02", "order_count": 68, "gross_merchandise_value": 10483.77, "average_order_value": 154.17, "average_delivery_days": 12.91}, {"order_date": "2017-02-03", "order_count": 56, "gross_merchandise_value": 11399.86, "average_order_value": 203.57, "average_delivery_days": 14.86}, {"order_date": "2017-02-04", "order_count": 66, "gross_merchandise_value": 15717.21, "average_order_value": 238.14, "average_delivery_days": 12.74}, {"order_date": "2017-02-05", "order_count": 75, "gross_merchandise_value": 10153.24, "average_order_value": 135.38, "average_delivery_days": 11.11}, {"order_date": "2017-02-06", "order_count": 81, "gross_merchandise_value": 11086.04, "average_order_value": 136.86, "average_delivery_days": 10.97}, {"order_date": "2017-02-07", "order_count": 110, "gross_merchandise_value": 16454.83, "average_order_value": 149.59, "average_delivery_days": 11.08}, {"order_date": "2017-02-08", "order_count": 89, "gross_merchandise_value": 13960.93, "average_order_value": 156.86, "average_delivery_days": 12.34}, {"order_date": "2017-02-09", "order_count": 77, "gross_merchandise_value": 10844.17, "average_order_value": 140.83, "average_delivery_days": 13.71}, {"order_date": "2017-02-10", "order_count": 65, "gross_merchandise_value": 15052.88, "average_order_value": 231.58, "average_delivery_days": 12.92}, {"order_date": "2017-02-11", "order_count": 45, "gross_merchandise_value": 5233.15, "average_order_value": 116.29, "average_delivery_days": 14.47}, {"order_date": "2017-02-12", "order_count": 62, "gross_merchandise_value": 16603.91, "average_order_value": 267.8, "average_delivery_days": 12.34}, {"order_date": "2017-02-13", "order_count": 75, "gross_merchandise_value": 12460.8, "average_order_value": 166.14, "average_delivery_days": 12.86}, {"order_date": "2017-02-14", "order_count": 71, "gross_merchandise_value": 14348.69, "average_order_value": 202.09, "average_delivery_days": 13.57}, {"order_date": "2017-02-15", "order_count": 60, "gross_merchandise_value": 8031.52, "average_order_value": 133.86, "average_delivery_days": 11.19}, {"order_date": "2017-02-16", "order_count": 50, "gross_merchandise_value": 7138.41, "average_order_value": 142.77, "average_delivery_days": 13.53}, {"order_date": "2017-02-17", "order_count": 45, "gross_merchandise_value": 8059.2, "average_order_value": 179.09, "average_delivery_days": 16.88}, {"order_date": "2017-02-18", "order_count": 52, "gross_merchandise_value": 8456.59, "average_order_value": 162.63, "average_delivery_days": 14.28}, {"order_date": "2017-02-19", "order_count": 40, "gross_merchandise_value": 4477.65, "average_order_value": 111.94, "average_delivery_days": 12.44}, {"order_date": "2017-02-20", "order_count": 62, "gross_merchandise_value": 9122.62, "average_order_value": 147.14, "average_delivery_days": 15.23}, {"order_date": "2017-02-21", "order_count": 41, "gross_merchandise_value": 9333.46, "average_order_value": 227.65, "average_delivery_days": 17.32}, {"order_date": "2017-02-22", "order_count": 58, "gross_merchandise_value": 8576.96, "average_order_value": 147.88, "average_delivery_days": 14.07}, {"order_date": "2017-02-23", "order_count": 59, "gross_merchandise_value": 8571.86, "average_order_value": 145.29, "average_delivery_days": 14.54}, {"order_date": "2017-02-24", "order_count": 62, "gross_merchandise_value": 7898.75, "average_order_value": 127.4, "average_delivery_days": 14.61}, {"order_date": "2017-02-25", "order_count": 42, "gross_merchandise_value": 5012.31, "average_order_value": 119.34, "average_delivery_days": 14.45}, {"order_date": "2017-02-26", "order_count": 45, "gross_merchandise_value": 6496.46, "average_order_value": 144.37, "average_delivery_days": 14.23}, {"order_date": "2017-02-27", "order_count": 42, "gross_merchandise_value": 6790.76, "average_order_value": 161.68, "average_delivery_days": 14.74}, {"order_date": "2017-02-28", "order_count": 54, "gross_merchandise_value": 12423.25, "average_order_value": 230.06, "average_delivery_days": 15.94}, {"order_date": "2017-03-01", "order_count": 95, "gross_merchandise_value": 14654.69, "average_order_value": 154.26, "average_delivery_days": 11.06}, {"order_date": "2017-03-02", "order_count": 68, "gross_merchandise_value": 12883.06, "average_order_value": 189.46, "average_delivery_days": 12.57}, {"order_date": "2017-03-03", "order_count": 72, "gross_merchandise_value": 13919.14, "average_order_value": 193.32, "average_delivery_days": 14.04}, {"order_date": "2017-03-04", "order_count": 76, "gross_merchandise_value": 12772.31, "average_order_value": 168.06, "average_delivery_days": 12.45}, {"order_date": "2017-03-05", "order_count": 70, "gross_merchandise_value": 8207.91, "average_order_value": 117.26, "average_delivery_days": 14.13}, {"order_date": "2017-03-06", "order_count": 98, "gross_merchandise_value": 10983.08, "average_order_value": 112.07, "average_delivery_days": 11.6}, {"order_date": "2017-03-07", "order_count": 80, "gross_merchandise_value": 13483.38, "average_order_value": 168.54, "average_delivery_days": 12.8}, {"order_date": "2017-03-08", "order_count": 77, "gross_merchandise_value": 16542.73, "average_order_value": 214.84, "average_delivery_days": 16.71}, {"order_date": "2017-03-09", "order_count": 92, "gross_merchandise_value": 13804.61, "average_order_value": 150.05, "average_delivery_days": 13.59}, {"order_date": "2017-03-10", "order_count": 86, "gross_merchandise_value": 14107.78, "average_order_value": 164.04, "average_delivery_days": 12.1}, {"order_date": "2017-03-11", "order_count": 70, "gross_merchandise_value": 12473.31, "average_order_value": 178.19, "average_delivery_days": 13.04}, {"order_date": "2017-03-12", "order_count": 63, "gross_merchandise_value": 7711.89, "average_order_value": 122.41, "average_delivery_days": 10.63}, {"order_date": "2017-03-13", "order_count": 108, "gross_merchandise_value": 18983.78, "average_order_value": 175.78, "average_delivery_days": 14.29}, {"order_date": "2017-03-14", "order_count": 98, "gross_merchandise_value": 16416.29, "average_order_value": 167.51, "average_delivery_days": 11.96}, {"order_date": "2017-03-15", "order_count": 107, "gross_merchandise_value": 17215.93, "average_order_value": 160.9, "average_delivery_days": 14.32}, {"order_date": "2017-03-16", "order_count": 102, "gross_merchandise_value": 16569.07, "average_order_value": 162.44, "average_delivery_days": 14.92}, {"order_date": "2017-03-17", "order_count": 65, "gross_merchandise_value": 13611.28, "average_order_value": 209.4, "average_delivery_days": 15.87}, {"order_date": "2017-03-18", "order_count": 73, "gross_merchandise_value": 17943.07, "average_order_value": 245.8, "average_delivery_days": 12.22}, {"order_date": "2017-03-19", "order_count": 56, "gross_merchandise_value": 7728.08, "average_order_value": 138.0, "average_delivery_days": 11.68}, {"order_date": "2017-03-20", "order_count": 114, "gross_merchandise_value": 19381.57, "average_order_value": 170.01, "average_delivery_days": 11.97}, {"order_date": "2017-03-21", "order_count": 92, "gross_merchandise_value": 13166.64, "average_order_value": 143.12, "average_delivery_days": 10.79}, {"order_date": "2017-03-22", "order_count": 105, "gross_merchandise_value": 16390.14, "average_order_value": 156.1, "average_delivery_days": 11.69}, {"order_date": "2017-03-23", "order_count": 110, "gross_merchandise_value": 18707.84, "average_order_value": 170.07, "average_delivery_days": 12.14}, {"order_date": "2017-03-24", "order_count": 76, "gross_merchandise_value": 11620.23, "average_order_value": 152.9, "average_delivery_days": 15.08}, {"order_date": "2017-03-25", "order_count": 74, "gross_merchandise_value": 10981.79, "average_order_value": 148.4, "average_delivery_days": 12.83}, {"order_date": "2017-03-26", "order_count": 64, "gross_merchandise_value": 7642.02, "average_order_value": 119.41, "average_delivery_days": 14.74}, {"order_date": "2017-03-27", "order_count": 109, "gross_merchandise_value": 18732.59, "average_order_value": 171.86, "average_delivery_days": 12.19}, {"order_date": "2017-03-28", "order_count": 100, "gross_merchandise_value": 14028.49, "average_order_value": 140.28, "average_delivery_days": 10.6}, {"order_date": "2017-03-29", "order_count": 73, "gross_merchandise_value": 9805.42, "average_order_value": 134.32, "average_delivery_days": 14.63}, {"order_date": "2017-03-30", "order_count": 74, "gross_merchandise_value": 11435.0, "average_order_value": 154.53, "average_delivery_days": 15.99}, {"order_date": "2017-03-31", "order_count": 70, "gross_merchandise_value": 13753.28, "average_order_value": 196.48, "average_delivery_days": 16.41}, {"order_date": "2017-04-01", "order_count": 67, "gross_merchandise_value": 19053.91, "average_order_value": 284.39, "average_delivery_days": 13.84}, {"order_date": "2017-04-02", "order_count": 65, "gross_merchandise_value": 10608.62, "average_order_value": 163.21, "average_delivery_days": 12.62}, {"order_date": "2017-04-03", "order_count": 72, "gross_merchandise_value": 10776.9, "average_order_value": 149.68, "average_delivery_days": 12.69}, {"order_date": "2017-04-04", "order_count": 96, "gross_merchandise_value": 14152.99, "average_order_value": 147.43, "average_delivery_days": 15.86}, {"order_date": "2017-04-05", "order_count": 96, "gross_merchandise_value": 20774.55, "average_order_value": 216.4, "average_delivery_days": 11.81}, {"order_date": "2017-04-06", "order_count": 95, "gross_merchandise_value": 25242.81, "average_order_value": 265.71, "average_delivery_days": 13.89}, {"order_date": "2017-04-07", "order_count": 84, "gross_merchandise_value": 14962.24, "average_order_value": 178.12, "average_delivery_days": 14.28}, {"order_date": "2017-04-08", "order_count": 66, "gross_merchandise_value": 10053.58, "average_order_value": 152.33, "average_delivery_days": 15.2}, {"order_date": "2017-04-09", "order_count": 71, "gross_merchandise_value": 9341.0, "average_order_value": 131.56, "average_delivery_days": 13.75}, {"order_date": "2017-04-10", "order_count": 86, "gross_merchandise_value": 13321.95, "average_order_value": 154.91, "average_delivery_days": 12.25}, {"order_date": "2017-04-11", "order_count": 77, "gross_merchandise_value": 9822.13, "average_order_value": 127.56, "average_delivery_days": 13.63}, {"order_date": "2017-04-12", "order_count": 62, "gross_merchandise_value": 9220.27, "average_order_value": 148.71, "average_delivery_days": 15.47}, {"order_date": "2017-04-13", "order_count": 60, "gross_merchandise_value": 11216.11, "average_order_value": 186.94, "average_delivery_days": 17.18}, {"order_date": "2017-04-14", "order_count": 51, "gross_merchandise_value": 8326.42, "average_order_value": 163.26, "average_delivery_days": 17.32}, {"order_date": "2017-04-15", "order_count": 52, "gross_merchandise_value": 9391.56, "average_order_value": 180.61, "average_delivery_days": 15.82}, {"order_date": "2017-04-16", "order_count": 49, "gross_merchandise_value": 6532.21, "average_order_value": 133.31, "average_delivery_days": 17.1}, {"order_date": "2017-04-17", "order_count": 64, "gross_merchandise_value": 9277.43, "average_order_value": 144.96, "average_delivery_days": 15.63}, {"order_date": "2017-04-18", "order_count": 71, "gross_merchandise_value": 23433.86, "average_order_value": 330.05, "average_delivery_days": 16.38}, {"order_date": "2017-04-19", "order_count": 97, "gross_merchandise_value": 13941.25, "average_order_value": 143.72, "average_delivery_days": 17.16}, {"order_date": "2017-04-20", "order_count": 96, "gross_merchandise_value": 15722.38, "average_order_value": 163.77, "average_delivery_days": 16.52}, {"order_date": "2017-04-21", "order_count": 67, "gross_merchandise_value": 10141.81, "average_order_value": 151.37, "average_delivery_days": 16.66}, {"order_date": "2017-04-22", "order_count": 83, "gross_merchandise_value": 14889.7, "average_order_value": 179.39, "average_delivery_days": 14.55}, {"order_date": "2017-04-23", "order_count": 85, "gross_merchandise_value": 11656.9, "average_order_value": 137.14, "average_delivery_days": 14.76}, {"order_date": "2017-04-24", "order_count": 114, "gross_merchandise_value": 15762.05, "average_order_value": 138.26, "average_delivery_days": 14.77}, {"order_date": "2017-04-25", "order_count": 111, "gross_merchandise_value": 17176.35, "average_order_value": 154.74, "average_delivery_days": 13.19}, {"order_date": "2017-04-26", "order_count": 123, "gross_merchandise_value": 18118.2, "average_order_value": 147.3, "average_delivery_days": 15.31}, {"order_date": "2017-04-27", "order_count": 78, "gross_merchandise_value": 11871.67, "average_order_value": 152.2, "average_delivery_days": 14.1}, {"order_date": "2017-04-28", "order_count": 98, "gross_merchandise_value": 18063.29, "average_order_value": 184.32, "average_delivery_days": 17.64}, {"order_date": "2017-04-29", "order_count": 73, "gross_merchandise_value": 13699.24, "average_order_value": 187.66, "average_delivery_days": 15.31}, {"order_date": "2017-04-30", "order_count": 68, "gross_merchandise_value": 9437.0, "average_order_value": 138.78, "average_delivery_days": 17.13}, {"order_date": "2017-05-01", "order_count": 116, "gross_merchandise_value": 14796.77, "average_order_value": 127.56, "average_delivery_days": 14.76}, {"order_date": "2017-05-02", "order_count": 125, "gross_merchandise_value": 20308.14, "average_order_value": 162.47, "average_delivery_days": 14.71}, {"order_date": "2017-05-03", "order_count": 102, "gross_merchandise_value": 12155.48, "average_order_value": 119.17, "average_delivery_days": 16.08}, {"order_date": "2017-05-04", "order_count": 108, "gross_merchandise_value": 15813.96, "average_order_value": 146.43, "average_delivery_days": 13.5}, {"order_date": "2017-05-05", "order_count": 110, "gross_merchandise_value": 16360.29, "average_order_value": 148.73, "average_delivery_days": 13.28}, {"order_date": "2017-05-06", "order_count": 107, "gross_merchandise_value": 18619.22, "average_order_value": 174.01, "average_delivery_days": 12.21}, {"order_date": "2017-05-07", "order_count": 109, "gross_merchandise_value": 19724.42, "average_order_value": 180.96, "average_delivery_days": 11.68}, {"order_date": "2017-05-08", "order_count": 122, "gross_merchandise_value": 19022.66, "average_order_value": 155.92, "average_delivery_days": 11.68}, {"order_date": "2017-05-09", "order_count": 124, "gross_merchandise_value": 23826.05, "average_order_value": 192.15, "average_delivery_days": 11.76}, {"order_date": "2017-05-10", "order_count": 115, "gross_merchandise_value": 23258.64, "average_order_value": 202.25, "average_delivery_days": 11.0}, {"order_date": "2017-05-11", "order_count": 126, "gross_merchandise_value": 21204.04, "average_order_value": 168.29, "average_delivery_days": 10.45}, {"order_date": "2017-05-12", "order_count": 110, "gross_merchandise_value": 14547.88, "average_order_value": 132.25, "average_delivery_days": 11.93}, {"order_date": "2017-05-13", "order_count": 72, "gross_merchandise_value": 10601.95, "average_order_value": 147.25, "average_delivery_days": 10.74}, {"order_date": "2017-05-14", "order_count": 110, "gross_merchandise_value": 17327.24, "average_order_value": 157.52, "average_delivery_days": 10.68}, {"order_date": "2017-05-15", "order_count": 153, "gross_merchandise_value": 21254.92, "average_order_value": 138.92, "average_delivery_days": 10.27}, {"order_date": "2017-05-16", "order_count": 150, "gross_merchandise_value": 24294.27, "average_order_value": 161.96, "average_delivery_days": 9.78}, {"order_date": "2017-05-17", "order_count": 140, "gross_merchandise_value": 21217.81, "average_order_value": 151.56, "average_delivery_days": 11.49}, {"order_date": "2017-05-18", "order_count": 125, "gross_merchandise_value": 20861.79, "average_order_value": 166.89, "average_delivery_days": 11.22}, {"order_date": "2017-05-19", "order_count": 144, "gross_merchandise_value": 21525.09, "average_order_value": 149.48, "average_delivery_days": 10.59}, {"order_date": "2017-05-20", "order_count": 72, "gross_merchandise_value": 12364.17, "average_order_value": 171.72, "average_delivery_days": 11.2}, {"order_date": "2017-05-21", "order_count": 148, "gross_merchandise_value": 20368.53, "average_order_value": 137.63, "average_delivery_days": 9.68}, {"order_date": "2017-05-22", "order_count": 148, "gross_merchandise_value": 28906.6, "average_order_value": 195.31, "average_delivery_days": 9.8}, {"order_date": "2017-05-23", "order_count": 124, "gross_merchandise_value": 20411.07, "average_order_value": 164.61, "average_delivery_days": 9.96}, {"order_date": "2017-05-24", "order_count": 141, "gross_merchandise_value": 26624.39, "average_order_value": 188.83, "average_delivery_days": 10.78}, {"order_date": "2017-05-25", "order_count": 104, "gross_merchandise_value": 17431.59, "average_order_value": 167.61, "average_delivery_days": 11.68}, {"order_date": "2017-05-26", "order_count": 78, "gross_merchandise_value": 12495.32, "average_order_value": 160.2, "average_delivery_days": 11.5}, {"order_date": "2017-05-27", "order_count": 79, "gross_merchandise_value": 15845.87, "average_order_value": 200.58, "average_delivery_days": 10.94}, {"order_date": "2017-05-28", "order_count": 98, "gross_merchandise_value": 11120.71, "average_order_value": 113.48, "average_delivery_days": 10.07}, {"order_date": "2017-05-29", "order_count": 157, "gross_merchandise_value": 21774.91, "average_order_value": 138.69, "average_delivery_days": 9.33}, {"order_date": "2017-05-30", "order_count": 100, "gross_merchandise_value": 16248.81, "average_order_value": 162.49, "average_delivery_days": 11.33}, {"order_date": "2017-05-31", "order_count": 123, "gross_merchandise_value": 22613.57, "average_order_value": 183.85, "average_delivery_days": 12.02}, {"order_date": "2017-06-01", "order_count": 124, "gross_merchandise_value": 21781.38, "average_order_value": 175.66, "average_delivery_days": 11.36}, {"order_date": "2017-06-02", "order_count": 126, "gross_merchandise_value": 21603.97, "average_order_value": 171.46, "average_delivery_days": 12.35}, {"order_date": "2017-06-03", "order_count": 89, "gross_merchandise_value": 12265.44, "average_order_value": 137.81, "average_delivery_days": 15.43}, {"order_date": "2017-06-04", "order_count": 101, "gross_merchandise_value": 15898.48, "average_order_value": 157.41, "average_delivery_days": 11.93}, {"order_date": "2017-06-05", "order_count": 145, "gross_merchandise_value": 26742.59, "average_order_value": 184.43, "average_delivery_days": 11.29}, {"order_date": "2017-06-06", "order_count": 133, "gross_merchandise_value": 17309.54, "average_order_value": 130.15, "average_delivery_days": 11.32}, {"order_date": "2017-06-07", "order_count": 124, "gross_merchandise_value": 15397.67, "average_order_value": 124.17, "average_delivery_days": 13.33}, {"order_date": "2017-06-08", "order_count": 137, "gross_merchandise_value": 22106.28, "average_order_value": 161.36, "average_delivery_days": 12.54}, {"order_date": "2017-06-09", "order_count": 106, "gross_merchandise_value": 18594.34, "average_order_value": 175.42, "average_delivery_days": 11.93}, {"order_date": "2017-06-10", "order_count": 76, "gross_merchandise_value": 9807.18, "average_order_value": 129.04, "average_delivery_days": 12.08}, {"order_date": "2017-06-11", "order_count": 113, "gross_merchandise_value": 16619.95, "average_order_value": 147.08, "average_delivery_days": 13.32}, {"order_date": "2017-06-12", "order_count": 125, "gross_merchandise_value": 17300.94, "average_order_value": 138.41, "average_delivery_days": 14.61}, {"order_date": "2017-06-13", "order_count": 124, "gross_merchandise_value": 16490.47, "average_order_value": 132.99, "average_delivery_days": 11.88}, {"order_date": "2017-06-14", "order_count": 130, "gross_merchandise_value": 23407.11, "average_order_value": 180.05, "average_delivery_days": 13.38}, {"order_date": "2017-06-15", "order_count": 105, "gross_merchandise_value": 14820.47, "average_order_value": 141.15, "average_delivery_days": 14.26}, {"order_date": "2017-06-16", "order_count": 95, "gross_merchandise_value": 14673.21, "average_order_value": 154.45, "average_delivery_days": 14.64}, {"order_date": "2017-06-17", "order_count": 74, "gross_merchandise_value": 12746.15, "average_order_value": 172.25, "average_delivery_days": 11.96}, {"order_date": "2017-06-18", "order_count": 88, "gross_merchandise_value": 17584.14, "average_order_value": 199.82, "average_delivery_days": 11.1}, {"order_date": "2017-06-19", "order_count": 155, "gross_merchandise_value": 25849.71, "average_order_value": 166.77, "average_delivery_days": 11.26}, {"order_date": "2017-06-20", "order_count": 92, "gross_merchandise_value": 14069.74, "average_order_value": 152.93, "average_delivery_days": 10.26}, {"order_date": "2017-06-21", "order_count": 35, "gross_merchandise_value": 7275.1, "average_order_value": 207.86, "average_delivery_days": 9.57}, {"order_date": "2017-06-22", "order_count": 86, "gross_merchandise_value": 10394.48, "average_order_value": 120.87, "average_delivery_days": 12.12}, {"order_date": "2017-06-23", "order_count": 106, "gross_merchandise_value": 15422.94, "average_order_value": 145.5, "average_delivery_days": 11.74}, {"order_date": "2017-06-24", "order_count": 76, "gross_merchandise_value": 10013.7, "average_order_value": 131.76, "average_delivery_days": 13.37}, {"order_date": "2017-06-25", "order_count": 105, "gross_merchandise_value": 20734.34, "average_order_value": 197.47, "average_delivery_days": 10.47}, {"order_date": "2017-06-26", "order_count": 72, "gross_merchandise_value": 15200.32, "average_order_value": 211.12, "average_delivery_days": 11.61}, {"order_date": "2017-06-27", "order_count": 140, "gross_merchandise_value": 19609.72, "average_order_value": 140.07, "average_delivery_days": 10.2}, {"order_date": "2017-06-28", "order_count": 120, "gross_merchandise_value": 17080.88, "average_order_value": 142.34, "average_delivery_days": 11.77}, {"order_date": "2017-06-29", "order_count": 110, "gross_merchandise_value": 14276.78, "average_order_value": 129.79, "average_delivery_days": 11.79}, {"order_date": "2017-06-30", "order_count": 93, "gross_merchandise_value": 14750.45, "average_order_value": 158.61, "average_delivery_days": 13.1}, {"order_date": "2017-07-01", "order_count": 80, "gross_merchandise_value": 14139.0, "average_order_value": 176.74, "average_delivery_days": 12.89}, {"order_date": "2017-07-02", "order_count": 104, "gross_merchandise_value": 13677.46, "average_order_value": 131.51, "average_delivery_days": 10.73}, {"order_date": "2017-07-03", "order_count": 116, "gross_merchandise_value": 19203.9, "average_order_value": 165.55, "average_delivery_days": 11.48}, {"order_date": "2017-07-04", "order_count": 123, "gross_merchandise_value": 17940.64, "average_order_value": 145.86, "average_delivery_days": 11.23}, {"order_date": "2017-07-05", "order_count": 139, "gross_merchandise_value": 23994.92, "average_order_value": 172.63, "average_delivery_days": 11.64}, {"order_date": "2017-07-06", "order_count": 148, "gross_merchandise_value": 25716.31, "average_order_value": 173.76, "average_delivery_days": 12.28}, {"order_date": "2017-07-07", "order_count": 116, "gross_merchandise_value": 15764.14, "average_order_value": 135.9, "average_delivery_days": 12.88}, {"order_date": "2017-07-08", "order_count": 83, "gross_merchandise_value": 11897.07, "average_order_value": 143.34, "average_delivery_days": 11.28}, {"order_date": "2017-07-09", "order_count": 88, "gross_merchandise_value": 9915.73, "average_order_value": 112.68, "average_delivery_days": 11.13}, {"order_date": "2017-07-10", "order_count": 140, "gross_merchandise_value": 20397.34, "average_order_value": 145.7, "average_delivery_days": 12.15}, {"order_date": "2017-07-11", "order_count": 161, "gross_merchandise_value": 23591.05, "average_order_value": 146.53, "average_delivery_days": 10.8}, {"order_date": "2017-07-12", "order_count": 147, "gross_merchandise_value": 22288.2, "average_order_value": 151.62, "average_delivery_days": 12.14}, {"order_date": "2017-07-13", "order_count": 136, "gross_merchandise_value": 17902.73, "average_order_value": 131.64, "average_delivery_days": 12.58}, {"order_date": "2017-07-14", "order_count": 149, "gross_merchandise_value": 21833.26, "average_order_value": 146.53, "average_delivery_days": 12.46}, {"order_date": "2017-07-15", "order_count": 98, "gross_merchandise_value": 13128.05, "average_order_value": 133.96, "average_delivery_days": 12.51}, {"order_date": "2017-07-16", "order_count": 111, "gross_merchandise_value": 15540.84, "average_order_value": 140.01, "average_delivery_days": 12.5}, {"order_date": "2017-07-17", "order_count": 163, "gross_merchandise_value": 25364.56, "average_order_value": 155.61, "average_delivery_days": 10.72}, {"order_date": "2017-07-18", "order_count": 190, "gross_merchandise_value": 32202.43, "average_order_value": 169.49, "average_delivery_days": 11.14}, {"order_date": "2017-07-19", "order_count": 150, "gross_merchandise_value": 19710.43, "average_order_value": 131.4, "average_delivery_days": 11.34}, {"order_date": "2017-07-20", "order_count": 140, "gross_merchandise_value": 21187.91, "average_order_value": 151.34, "average_delivery_days": 11.35}, {"order_date": "2017-07-21", "order_count": 113, "gross_merchandise_value": 15124.85, "average_order_value": 133.85, "average_delivery_days": 11.93}, {"order_date": "2017-07-22", "order_count": 88, "gross_merchandise_value": 13318.54, "average_order_value": 151.35, "average_delivery_days": 12.6}, {"order_date": "2017-07-23", "order_count": 104, "gross_merchandise_value": 14005.72, "average_order_value": 134.67, "average_delivery_days": 9.76}, {"order_date": "2017-07-24", "order_count": 158, "gross_merchandise_value": 21344.73, "average_order_value": 135.09, "average_delivery_days": 11.51}, {"order_date": "2017-07-25", "order_count": 149, "gross_merchandise_value": 20104.92, "average_order_value": 134.93, "average_delivery_days": 10.88}, {"order_date": "2017-07-26", "order_count": 121, "gross_merchandise_value": 13709.72, "average_order_value": 113.3, "average_delivery_days": 10.62}, {"order_date": "2017-07-27", "order_count": 123, "gross_merchandise_value": 18729.07, "average_order_value": 152.27, "average_delivery_days": 11.25}, {"order_date": "2017-07-28", "order_count": 132, "gross_merchandise_value": 23276.3, "average_order_value": 176.34, "average_delivery_days": 11.89}, {"order_date": "2017-07-29", "order_count": 114, "gross_merchandise_value": 18205.24, "average_order_value": 159.7, "average_delivery_days": 11.55}, {"order_date": "2017-07-30", "order_count": 117, "gross_merchandise_value": 15341.69, "average_order_value": 131.13, "average_delivery_days": 9.48}, {"order_date": "2017-07-31", "order_count": 145, "gross_merchandise_value": 20301.83, "average_order_value": 140.01, "average_delivery_days": 9.7}, {"order_date": "2017-08-01", "order_count": 165, "gross_merchandise_value": 25417.36, "average_order_value": 154.04, "average_delivery_days": 11.18}, {"order_date": "2017-08-02", "order_count": 152, "gross_merchandise_value": 20933.39, "average_order_value": 137.72, "average_delivery_days": 9.7}, {"order_date": "2017-08-03", "order_count": 145, "gross_merchandise_value": 22063.41, "average_order_value": 152.16, "average_delivery_days": 10.65}, {"order_date": "2017-08-04", "order_count": 141, "gross_merchandise_value": 21629.61, "average_order_value": 153.4, "average_delivery_days": 12.28}, {"order_date": "2017-08-05", "order_count": 114, "gross_merchandise_value": 14407.83, "average_order_value": 126.38, "average_delivery_days": 12.43}, {"order_date": "2017-08-06", "order_count": 108, "gross_merchandise_value": 16965.11, "average_order_value": 157.08, "average_delivery_days": 12.53}, {"order_date": "2017-08-07", "order_count": 157, "gross_merchandise_value": 26629.34, "average_order_value": 169.61, "average_delivery_days": 10.13}, {"order_date": "2017-08-08", "order_count": 146, "gross_merchandise_value": 21541.13, "average_order_value": 147.54, "average_delivery_days": 10.22}, {"order_date": "2017-08-09", "order_count": 141, "gross_merchandise_value": 23752.27, "average_order_value": 168.46, "average_delivery_days": 10.43}, {"order_date": "2017-08-10", "order_count": 154, "gross_merchandise_value": 23196.09, "average_order_value": 150.62, "average_delivery_days": 12.11}, {"order_date": "2017-08-11", "order_count": 137, "gross_merchandise_value": 22348.01, "average_order_value": 163.12, "average_delivery_days": 11.27}, {"order_date": "2017-08-12", "order_count": 95, "gross_merchandise_value": 15511.9, "average_order_value": 163.28, "average_delivery_days": 11.17}, {"order_date": "2017-08-13", "order_count": 91, "gross_merchandise_value": 14405.43, "average_order_value": 158.3, "average_delivery_days": 10.1}, {"order_date": "2017-08-14", "order_count": 154, "gross_merchandise_value": 21277.16, "average_order_value": 138.16, "average_delivery_days": 9.74}, {"order_date": "2017-08-15", "order_count": 193, "gross_merchandise_value": 27940.66, "average_order_value": 144.77, "average_delivery_days": 11.87}, {"order_date": "2017-08-16", "order_count": 170, "gross_merchandise_value": 25070.71, "average_order_value": 147.47, "average_delivery_days": 11.1}, {"order_date": "2017-08-17", "order_count": 155, "gross_merchandise_value": 21737.95, "average_order_value": 140.24, "average_delivery_days": 11.88}, {"order_date": "2017-08-18", "order_count": 146, "gross_merchandise_value": 20025.87, "average_order_value": 137.16, "average_delivery_days": 11.21}, {"order_date": "2017-08-19", "order_count": 107, "gross_merchandise_value": 15086.02, "average_order_value": 140.99, "average_delivery_days": 11.11}, {"order_date": "2017-08-20", "order_count": 103, "gross_merchandise_value": 14955.17, "average_order_value": 145.2, "average_delivery_days": 9.84}, {"order_date": "2017-08-21", "order_count": 177, "gross_merchandise_value": 26019.72, "average_order_value": 147.0, "average_delivery_days": 9.98}, {"order_date": "2017-08-22", "order_count": 136, "gross_merchandise_value": 19749.47, "average_order_value": 145.22, "average_delivery_days": 10.23}, {"order_date": "2017-08-23", "order_count": 111, "gross_merchandise_value": 18593.79, "average_order_value": 167.51, "average_delivery_days": 11.05}, {"order_date": "2017-08-24", "order_count": 126, "gross_merchandise_value": 16094.41, "average_order_value": 127.73, "average_delivery_days": 11.64}, {"order_date": "2017-08-25", "order_count": 121, "gross_merchandise_value": 17277.28, "average_order_value": 142.79, "average_delivery_days": 13.19}, {"order_date": "2017-08-26", "order_count": 93, "gross_merchandise_value": 12054.65, "average_order_value": 129.62, "average_delivery_days": 10.73}, {"order_date": "2017-08-27", "order_count": 118, "gross_merchandise_value": 16295.45, "average_order_value": 138.1, "average_delivery_days": 10.0}, {"order_date": "2017-08-28", "order_count": 154, "gross_merchandise_value": 25497.07, "average_order_value": 165.57, "average_delivery_days": 9.9}, {"order_date": "2017-08-29", "order_count": 137, "gross_merchandise_value": 37025.7, "average_order_value": 270.26, "average_delivery_days": 11.57}, {"order_date": "2017-08-30", "order_count": 177, "gross_merchandise_value": 34874.83, "average_order_value": 197.03, "average_delivery_days": 11.11}, {"order_date": "2017-08-31", "order_count": 148, "gross_merchandise_value": 23694.98, "average_order_value": 160.1, "average_delivery_days": 10.81}, {"order_date": "2017-09-01", "order_count": 157, "gross_merchandise_value": 32421.94, "average_order_value": 206.51, "average_delivery_days": 12.73}, {"order_date": "2017-09-02", "order_count": 104, "gross_merchandise_value": 20479.18, "average_order_value": 196.92, "average_delivery_days": 11.24}, {"order_date": "2017-09-03", "order_count": 124, "gross_merchandise_value": 30887.45, "average_order_value": 249.09, "average_delivery_days": 10.22}, {"order_date": "2017-09-04", "order_count": 148, "gross_merchandise_value": 28385.22, "average_order_value": 191.79, "average_delivery_days": 12.54}, {"order_date": "2017-09-05", "order_count": 154, "gross_merchandise_value": 24528.96, "average_order_value": 159.28, "average_delivery_days": 11.06}, {"order_date": "2017-09-06", "order_count": 139, "gross_merchandise_value": 28304.19, "average_order_value": 203.63, "average_delivery_days": 13.84}, {"order_date": "2017-09-07", "order_count": 97, "gross_merchandise_value": 19096.76, "average_order_value": 196.87, "average_delivery_days": 11.32}, {"order_date": "2017-09-08", "order_count": 114, "gross_merchandise_value": 14195.96, "average_order_value": 124.53, "average_delivery_days": 12.43}, {"order_date": "2017-09-09", "order_count": 106, "gross_merchandise_value": 17681.22, "average_order_value": 166.8, "average_delivery_days": 11.1}, {"order_date": "2017-09-10", "order_count": 134, "gross_merchandise_value": 20702.76, "average_order_value": 154.5, "average_delivery_days": 10.73}, {"order_date": "2017-09-11", "order_count": 177, "gross_merchandise_value": 26916.45, "average_order_value": 152.07, "average_delivery_days": 10.13}, {"order_date": "2017-09-12", "order_count": 203, "gross_merchandise_value": 32097.23, "average_order_value": 158.11, "average_delivery_days": 12.23}, {"order_date": "2017-09-13", "order_count": 204, "gross_merchandise_value": 31601.2, "average_order_value": 154.91, "average_delivery_days": 11.79}, {"order_date": "2017-09-14", "order_count": 166, "gross_merchandise_value": 26502.51, "average_order_value": 159.65, "average_delivery_days": 11.99}, {"order_date": "2017-09-15", "order_count": 148, "gross_merchandise_value": 21359.52, "average_order_value": 144.32, "average_delivery_days": 12.79}, {"order_date": "2017-09-16", "order_count": 127, "gross_merchandise_value": 23548.28, "average_order_value": 185.42, "average_delivery_days": 12.57}, {"order_date": "2017-09-17", "order_count": 125, "gross_merchandise_value": 22826.04, "average_order_value": 182.61, "average_delivery_days": 12.27}, {"order_date": "2017-09-18", "order_count": 183, "gross_merchandise_value": 32535.23, "average_order_value": 177.79, "average_delivery_days": 11.3}, {"order_date": "2017-09-19", "order_count": 153, "gross_merchandise_value": 23425.66, "average_order_value": 153.11, "average_delivery_days": 12.05}, {"order_date": "2017-09-20", "order_count": 161, "gross_merchandise_value": 26067.87, "average_order_value": 161.91, "average_delivery_days": 11.44}, {"order_date": "2017-09-21", "order_count": 150, "gross_merchandise_value": 22458.19, "average_order_value": 149.72, "average_delivery_days": 12.48}, {"order_date": "2017-09-22", "order_count": 135, "gross_merchandise_value": 18514.18, "average_order_value": 137.14, "average_delivery_days": 11.59}, {"order_date": "2017-09-23", "order_count": 84, "gross_merchandise_value": 12191.12, "average_order_value": 145.13, "average_delivery_days": 14.35}, {"order_date": "2017-09-24", "order_count": 112, "gross_merchandise_value": 15371.22, "average_order_value": 137.24, "average_delivery_days": 11.5}, {"order_date": "2017-09-25", "order_count": 132, "gross_merchandise_value": 20839.71, "average_order_value": 157.88, "average_delivery_days": 11.2}, {"order_date": "2017-09-26", "order_count": 179, "gross_merchandise_value": 25241.67, "average_order_value": 141.01, "average_delivery_days": 11.28}, {"order_date": "2017-09-27", "order_count": 144, "gross_merchandise_value": 24083.23, "average_order_value": 167.24, "average_delivery_days": 11.5}, {"order_date": "2017-09-28", "order_count": 142, "gross_merchandise_value": 26349.1, "average_order_value": 185.56, "average_delivery_days": 11.49}, {"order_date": "2017-09-29", "order_count": 116, "gross_merchandise_value": 33704.0, "average_order_value": 290.55, "average_delivery_days": 12.71}, {"order_date": "2017-09-30", "order_count": 109, "gross_merchandise_value": 14879.17, "average_order_value": 136.51, "average_delivery_days": 11.31}, {"order_date": "2017-10-01", "order_count": 126, "gross_merchandise_value": 21471.55, "average_order_value": 170.41, "average_delivery_days": 11.65}, {"order_date": "2017-10-02", "order_count": 141, "gross_merchandise_value": 25139.59, "average_order_value": 178.29, "average_delivery_days": 11.16}, {"order_date": "2017-10-03", "order_count": 198, "gross_merchandise_value": 30389.12, "average_order_value": 153.48, "average_delivery_days": 11.17}, {"order_date": "2017-10-04", "order_count": 157, "gross_merchandise_value": 24787.58, "average_order_value": 157.88, "average_delivery_days": 12.1}, {"order_date": "2017-10-05", "order_count": 139, "gross_merchandise_value": 28815.44, "average_order_value": 207.31, "average_delivery_days": 12.59}, {"order_date": "2017-10-06", "order_count": 125, "gross_merchandise_value": 19924.42, "average_order_value": 159.4, "average_delivery_days": 14.4}, {"order_date": "2017-10-07", "order_count": 102, "gross_merchandise_value": 17422.63, "average_order_value": 170.81, "average_delivery_days": 13.57}, {"order_date": "2017-10-08", "order_count": 124, "gross_merchandise_value": 19424.09, "average_order_value": 156.65, "average_delivery_days": 10.95}, {"order_date": "2017-10-09", "order_count": 189, "gross_merchandise_value": 33751.0, "average_order_value": 178.58, "average_delivery_days": 12.19}, {"order_date": "2017-10-10", "order_count": 178, "gross_merchandise_value": 31753.46, "average_order_value": 178.39, "average_delivery_days": 12.26}, {"order_date": "2017-10-11", "order_count": 156, "gross_merchandise_value": 25916.39, "average_order_value": 166.13, "average_delivery_days": 11.36}, {"order_date": "2017-10-12", "order_count": 138, "gross_merchandise_value": 22111.29, "average_order_value": 160.23, "average_delivery_days": 12.8}, {"order_date": "2017-10-13", "order_count": 151, "gross_merchandise_value": 26406.7, "average_order_value": 174.88, "average_delivery_days": 12.76}, {"order_date": "2017-10-14", "order_count": 115, "gross_merchandise_value": 16131.48, "average_order_value": 140.27, "average_delivery_days": 10.99}, {"order_date": "2017-10-15", "order_count": 120, "gross_merchandise_value": 21299.15, "average_order_value": 177.49, "average_delivery_days": 10.29}, {"order_date": "2017-10-16", "order_count": 194, "gross_merchandise_value": 35110.66, "average_order_value": 180.98, "average_delivery_days": 11.29}, {"order_date": "2017-10-17", "order_count": 197, "gross_merchandise_value": 34756.27, "average_order_value": 176.43, "average_delivery_days": 12.05}, {"order_date": "2017-10-18", "order_count": 176, "gross_merchandise_value": 31501.88, "average_order_value": 178.99, "average_delivery_days": 10.89}, {"order_date": "2017-10-19", "order_count": 175, "gross_merchandise_value": 26909.61, "average_order_value": 153.77, "average_delivery_days": 11.58}, {"order_date": "2017-10-20", "order_count": 119, "gross_merchandise_value": 21471.4, "average_order_value": 180.43, "average_delivery_days": 12.07}, {"order_date": "2017-10-21", "order_count": 108, "gross_merchandise_value": 17101.82, "average_order_value": 158.35, "average_delivery_days": 11.05}, {"order_date": "2017-10-22", "order_count": 156, "gross_merchandise_value": 23171.49, "average_order_value": 148.54, "average_delivery_days": 10.99}, {"order_date": "2017-10-23", "order_count": 157, "gross_merchandise_value": 25684.98, "average_order_value": 163.6, "average_delivery_days": 10.74}, {"order_date": "2017-10-24", "order_count": 163, "gross_merchandise_value": 25711.59, "average_order_value": 157.74, "average_delivery_days": 10.77}, {"order_date": "2017-10-25", "order_count": 154, "gross_merchandise_value": 20731.59, "average_order_value": 134.62, "average_delivery_days": 11.88}, {"order_date": "2017-10-26", "order_count": 142, "gross_merchandise_value": 25578.34, "average_order_value": 180.13, "average_delivery_days": 11.43}, {"order_date": "2017-10-27", "order_count": 131, "gross_merchandise_value": 23158.06, "average_order_value": 176.78, "average_delivery_days": 12.69}, {"order_date": "2017-10-28", "order_count": 86, "gross_merchandise_value": 18922.48, "average_order_value": 220.03, "average_delivery_days": 12.62}, {"order_date": "2017-10-29", "order_count": 129, "gross_merchandise_value": 20055.17, "average_order_value": 155.47, "average_delivery_days": 10.64}, {"order_date": "2017-10-30", "order_count": 143, "gross_merchandise_value": 23290.75, "average_order_value": 162.87, "average_delivery_days": 11.03}, {"order_date": "2017-10-31", "order_count": 157, "gross_merchandise_value": 26846.59, "average_order_value": 171.0, "average_delivery_days": 11.88}, {"order_date": "2017-11-01", "order_count": 109, "gross_merchandise_value": 22066.96, "average_order_value": 202.45, "average_delivery_days": 12.88}, {"order_date": "2017-11-02", "order_count": 119, "gross_merchandise_value": 23941.1, "average_order_value": 201.19, "average_delivery_days": 12.65}, {"order_date": "2017-11-03", "order_count": 138, "gross_merchandise_value": 26036.08, "average_order_value": 188.67, "average_delivery_days": 12.54}, {"order_date": "2017-11-04", "order_count": 111, "gross_merchandise_value": 22294.81, "average_order_value": 200.85, "average_delivery_days": 12.16}, {"order_date": "2017-11-05", "order_count": 140, "gross_merchandise_value": 20003.43, "average_order_value": 142.88, "average_delivery_days": 11.42}, {"order_date": "2017-11-06", "order_count": 187, "gross_merchandise_value": 32606.2, "average_order_value": 174.36, "average_delivery_days": 13.65}, {"order_date": "2017-11-07", "order_count": 157, "gross_merchandise_value": 24613.64, "average_order_value": 156.77, "average_delivery_days": 11.44}, {"order_date": "2017-11-08", "order_count": 173, "gross_merchandise_value": 23241.95, "average_order_value": 134.35, "average_delivery_days": 12.03}, {"order_date": "2017-11-09", "order_count": 186, "gross_merchandise_value": 28440.62, "average_order_value": 152.91, "average_delivery_days": 12.05}, {"order_date": "2017-11-10", "order_count": 163, "gross_merchandise_value": 22628.52, "average_order_value": 138.83, "average_delivery_days": 13.54}, {"order_date": "2017-11-11", "order_count": 154, "gross_merchandise_value": 26574.07, "average_order_value": 172.56, "average_delivery_days": 14.37}, {"order_date": "2017-11-12", "order_count": 172, "gross_merchandise_value": 26529.31, "average_order_value": 154.24, "average_delivery_days": 12.88}, {"order_date": "2017-11-13", "order_count": 200, "gross_merchandise_value": 29171.73, "average_order_value": 145.86, "average_delivery_days": 13.32}, {"order_date": "2017-11-14", "order_count": 185, "gross_merchandise_value": 30932.52, "average_order_value": 167.2, "average_delivery_days": 15.55}, {"order_date": "2017-11-15", "order_count": 182, "gross_merchandise_value": 26726.98, "average_order_value": 146.85, "average_delivery_days": 12.65}, {"order_date": "2017-11-16", "order_count": 224, "gross_merchandise_value": 32918.08, "average_order_value": 146.96, "average_delivery_days": 13.47}, {"order_date": "2017-11-17", "order_count": 189, "gross_merchandise_value": 34192.17, "average_order_value": 180.91, "average_delivery_days": 13.43}, {"order_date": "2017-11-18", "order_count": 145, "gross_merchandise_value": 27185.15, "average_order_value": 187.48, "average_delivery_days": 14.22}, {"order_date": "2017-11-19", "order_count": 158, "gross_merchandise_value": 23312.6, "average_order_value": 147.55, "average_delivery_days": 11.95}, {"order_date": "2017-11-20", "order_count": 225, "gross_merchandise_value": 50017.83, "average_order_value": 222.3, "average_delivery_days": 13.56}, {"order_date": "2017-11-21", "order_count": 224, "gross_merchandise_value": 39155.2, "average_order_value": 174.8, "average_delivery_days": 13.55}, {"order_date": "2017-11-22", "order_count": 197, "gross_merchandise_value": 29647.81, "average_order_value": 150.5, "average_delivery_days": 14.23}, {"order_date": "2017-11-23", "order_count": 275, "gross_merchandise_value": 50322.13, "average_order_value": 182.99, "average_delivery_days": 15.71}, {"order_date": "2017-11-24", "order_count": 1166, "gross_merchandise_value": 178450.11, "average_order_value": 153.04, "average_delivery_days": 17.04}, {"order_date": "2017-11-25", "order_count": 499, "gross_merchandise_value": 71897.01, "average_order_value": 144.08, "average_delivery_days": 18.71}, {"order_date": "2017-11-26", "order_count": 387, "gross_merchandise_value": 53247.48, "average_order_value": 137.59, "average_delivery_days": 16.68}, {"order_date": "2017-11-27", "order_count": 400, "gross_merchandise_value": 56644.83, "average_order_value": 141.61, "average_delivery_days": 16.49}, {"order_date": "2017-11-28", "order_count": 376, "gross_merchandise_value": 56248.48, "average_order_value": 149.6, "average_delivery_days": 15.47}, {"order_date": "2017-11-29", "order_count": 318, "gross_merchandise_value": 46971.77, "average_order_value": 147.71, "average_delivery_days": 17.53}, {"order_date": "2017-11-30", "order_count": 264, "gross_merchandise_value": 36620.66, "average_order_value": 138.71, "average_delivery_days": 16.06}, {"order_date": "2017-12-01", "order_count": 274, "gross_merchandise_value": 45973.82, "average_order_value": 167.79, "average_delivery_days": 16.6}, {"order_date": "2017-12-02", "order_count": 214, "gross_merchandise_value": 35723.78, "average_order_value": 166.93, "average_delivery_days": 16.64}, {"order_date": "2017-12-03", "order_count": 231, "gross_merchandise_value": 34212.69, "average_order_value": 148.11, "average_delivery_days": 15.1}, {"order_date": "2017-12-04", "order_count": 330, "gross_merchandise_value": 53455.71, "average_order_value": 161.99, "average_delivery_days": 15.8}, {"order_date": "2017-12-05", "order_count": 277, "gross_merchandise_value": 39827.23, "average_order_value": 143.78, "average_delivery_days": 15.56}, {"order_date": "2017-12-06", "order_count": 273, "gross_merchandise_value": 45490.24, "average_order_value": 166.63, "average_delivery_days": 16.77}, {"order_date": "2017-12-07", "order_count": 226, "gross_merchandise_value": 32920.87, "average_order_value": 145.67, "average_delivery_days": 16.06}, {"order_date": "2017-12-08", "order_count": 215, "gross_merchandise_value": 34362.22, "average_order_value": 159.82, "average_delivery_days": 16.24}, {"order_date": "2017-12-09", "order_count": 155, "gross_merchandise_value": 23639.52, "average_order_value": 152.51, "average_delivery_days": 17.23}, {"order_date": "2017-12-10", "order_count": 187, "gross_merchandise_value": 28627.58, "average_order_value": 153.09, "average_delivery_days": 15.4}, {"order_date": "2017-12-11", "order_count": 266, "gross_merchandise_value": 39071.53, "average_order_value": 146.89, "average_delivery_days": 15.38}, {"order_date": "2017-12-12", "order_count": 258, "gross_merchandise_value": 38557.38, "average_order_value": 149.45, "average_delivery_days": 15.39}, {"order_date": "2017-12-13", "order_count": 217, "gross_merchandise_value": 34127.22, "average_order_value": 157.27, "average_delivery_days": 14.29}, {"order_date": "2017-12-14", "order_count": 199, "gross_merchandise_value": 29580.87, "average_order_value": 148.65, "average_delivery_days": 15.49}, {"order_date": "2017-12-15", "order_count": 192, "gross_merchandise_value": 31451.63, "average_order_value": 163.81, "average_delivery_days": 16.14}, {"order_date": "2017-12-16", "order_count": 131, "gross_merchandise_value": 22907.05, "average_order_value": 174.86, "average_delivery_days": 15.45}, {"order_date": "2017-12-17", "order_count": 133, "gross_merchandise_value": 22106.0, "average_order_value": 166.21, "average_delivery_days": 12.68}, {"order_date": "2017-12-18", "order_count": 208, "gross_merchandise_value": 33813.9, "average_order_value": 162.57, "average_delivery_days": 14.82}, {"order_date": "2017-12-19", "order_count": 174, "gross_merchandise_value": 24134.51, "average_order_value": 138.7, "average_delivery_days": 14.43}, {"order_date": "2017-12-20", "order_count": 171, "gross_merchandise_value": 32004.68, "average_order_value": 187.16, "average_delivery_days": 15.85}, {"order_date": "2017-12-21", "order_count": 142, "gross_merchandise_value": 21247.44, "average_order_value": 149.63, "average_delivery_days": 14.17}, {"order_date": "2017-12-22", "order_count": 110, "gross_merchandise_value": 17233.5, "average_order_value": 156.67, "average_delivery_days": 15.79}, {"order_date": "2017-12-23", "order_count": 107, "gross_merchandise_value": 15357.06, "average_order_value": 143.52, "average_delivery_days": 17.37}, {"order_date": "2017-12-24", "order_count": 58, "gross_merchandise_value": 6708.53, "average_order_value": 115.66, "average_delivery_days": 11.95}, {"order_date": "2017-12-25", "order_count": 90, "gross_merchandise_value": 12662.23, "average_order_value": 140.69, "average_delivery_days": 14.78}, {"order_date": "2017-12-26", "order_count": 168, "gross_merchandise_value": 23797.46, "average_order_value": 141.65, "average_delivery_days": 12.16}, {"order_date": "2017-12-27", "order_count": 166, "gross_merchandise_value": 21027.51, "average_order_value": 126.67, "average_delivery_days": 13.57}, {"order_date": "2017-12-28", "order_count": 146, "gross_merchandise_value": 17793.85, "average_order_value": 121.88, "average_delivery_days": 14.7}, {"order_date": "2017-12-29", "order_count": 133, "gross_merchandise_value": 18765.65, "average_order_value": 141.1, "average_delivery_days": 15.03}, {"order_date": "2017-12-30", "order_count": 96, "gross_merchandise_value": 15201.6, "average_order_value": 158.35, "average_delivery_days": 15.69}, {"order_date": "2017-12-31", "order_count": 73, "gross_merchandise_value": 10131.2, "average_order_value": 138.78, "average_delivery_days": 13.52}, {"order_date": "2018-01-01", "order_count": 73, "gross_merchandise_value": 8453.61, "average_order_value": 115.8, "average_delivery_days": 12.43}, {"order_date": "2018-01-02", "order_count": 203, "gross_merchandise_value": 29410.51, "average_order_value": 144.88, "average_delivery_days": 12.2}, {"order_date": "2018-01-03", "order_count": 221, "gross_merchandise_value": 36127.13, "average_order_value": 163.47, "average_delivery_days": 13.45}, {"order_date": "2018-01-04", "order_count": 255, "gross_merchandise_value": 39936.94, "average_order_value": 156.62, "average_delivery_days": 13.96}, {"order_date": "2018-01-05", "order_count": 209, "gross_merchandise_value": 32287.9, "average_order_value": 154.49, "average_delivery_days": 14.7}, {"order_date": "2018-01-06", "order_count": 215, "gross_merchandise_value": 32581.28, "average_order_value": 151.54, "average_delivery_days": 14.82}, {"order_date": "2018-01-07", "order_count": 195, "gross_merchandise_value": 33918.12, "average_order_value": 173.94, "average_delivery_days": 12.61}, {"order_date": "2018-01-08", "order_count": 292, "gross_merchandise_value": 45176.22, "average_order_value": 154.71, "average_delivery_days": 12.74}, {"order_date": "2018-01-09", "order_count": 251, "gross_merchandise_value": 35406.89, "average_order_value": 141.06, "average_delivery_days": 13.34}, {"order_date": "2018-01-10", "order_count": 277, "gross_merchandise_value": 44824.93, "average_order_value": 161.82, "average_delivery_days": 15.01}, {"order_date": "2018-01-11", "order_count": 264, "gross_merchandise_value": 46376.66, "average_order_value": 175.67, "average_delivery_days": 14.17}, {"order_date": "2018-01-12", "order_count": 239, "gross_merchandise_value": 36932.96, "average_order_value": 154.53, "average_delivery_days": 14.56}, {"order_date": "2018-01-13", "order_count": 216, "gross_merchandise_value": 32690.45, "average_order_value": 151.34, "average_delivery_days": 13.56}, {"order_date": "2018-01-14", "order_count": 232, "gross_merchandise_value": 35390.75, "average_order_value": 152.55, "average_delivery_days": 13.18}, {"order_date": "2018-01-15", "order_count": 305, "gross_merchandise_value": 44987.64, "average_order_value": 147.5, "average_delivery_days": 12.88}, {"order_date": "2018-01-16", "order_count": 301, "gross_merchandise_value": 51129.29, "average_order_value": 169.86, "average_delivery_days": 13.78}, {"order_date": "2018-01-17", "order_count": 282, "gross_merchandise_value": 42151.92, "average_order_value": 149.47, "average_delivery_days": 13.45}, {"order_date": "2018-01-18", "order_count": 238, "gross_merchandise_value": 32765.29, "average_order_value": 137.67, "average_delivery_days": 14.26}, {"order_date": "2018-01-19", "order_count": 232, "gross_merchandise_value": 35290.89, "average_order_value": 152.12, "average_delivery_days": 14.74}, {"order_date": "2018-01-20", "order_count": 183, "gross_merchandise_value": 26770.63, "average_order_value": 146.29, "average_delivery_days": 15.02}, {"order_date": "2018-01-21", "order_count": 193, "gross_merchandise_value": 27783.4, "average_order_value": 143.96, "average_delivery_days": 14.77}, {"order_date": "2018-01-22", "order_count": 309, "gross_merchandise_value": 43319.15, "average_order_value": 140.19, "average_delivery_days": 12.68}, {"order_date": "2018-01-23", "order_count": 260, "gross_merchandise_value": 39832.9, "average_order_value": 153.2, "average_delivery_days": 13.75}, {"order_date": "2018-01-24", "order_count": 240, "gross_merchandise_value": 36553.86, "average_order_value": 152.31, "average_delivery_days": 16.1}, {"order_date": "2018-01-25", "order_count": 230, "gross_merchandise_value": 34734.25, "average_order_value": 151.02, "average_delivery_days": 14.74}, {"order_date": "2018-01-26", "order_count": 225, "gross_merchandise_value": 38997.68, "average_order_value": 173.32, "average_delivery_days": 13.77}, {"order_date": "2018-01-27", "order_count": 150, "gross_merchandise_value": 24568.62, "average_order_value": 163.79, "average_delivery_days": 13.87}, {"order_date": "2018-01-28", "order_count": 152, "gross_merchandise_value": 27038.13, "average_order_value": 177.88, "average_delivery_days": 13.26}, {"order_date": "2018-01-29", "order_count": 242, "gross_merchandise_value": 35457.08, "average_order_value": 146.52, "average_delivery_days": 15.77}, {"order_date": "2018-01-30", "order_count": 251, "gross_merchandise_value": 34449.27, "average_order_value": 137.25, "average_delivery_days": 15.58}, {"order_date": "2018-01-31", "order_count": 252, "gross_merchandise_value": 37295.06, "average_order_value": 148.0, "average_delivery_days": 14.26}, {"order_date": "2018-02-01", "order_count": 228, "gross_merchandise_value": 35335.42, "average_order_value": 154.98, "average_delivery_days": 14.95}, {"order_date": "2018-02-02", "order_count": 208, "gross_merchandise_value": 32357.3, "average_order_value": 155.56, "average_delivery_days": 16.94}, {"order_date": "2018-02-03", "order_count": 190, "gross_merchandise_value": 27168.39, "average_order_value": 142.99, "average_delivery_days": 16.72}, {"order_date": "2018-02-04", "order_count": 200, "gross_merchandise_value": 28072.84, "average_order_value": 140.36, "average_delivery_days": 14.84}, {"order_date": "2018-02-05", "order_count": 266, "gross_merchandise_value": 42606.83, "average_order_value": 160.18, "average_delivery_days": 16.47}, {"order_date": "2018-02-06", "order_count": 266, "gross_merchandise_value": 39599.8, "average_order_value": 148.87, "average_delivery_days": 14.97}, {"order_date": "2018-02-07", "order_count": 243, "gross_merchandise_value": 36109.44, "average_order_value": 148.6, "average_delivery_days": 15.52}, {"order_date": "2018-02-08", "order_count": 225, "gross_merchandise_value": 31531.31, "average_order_value": 140.14, "average_delivery_days": 17.14}, {"order_date": "2018-02-09", "order_count": 209, "gross_merchandise_value": 34781.47, "average_order_value": 166.42, "average_delivery_days": 18.02}, {"order_date": "2018-02-10", "order_count": 175, "gross_merchandise_value": 24904.11, "average_order_value": 142.31, "average_delivery_days": 16.47}, {"order_date": "2018-02-11", "order_count": 169, "gross_merchandise_value": 25876.69, "average_order_value": 153.12, "average_delivery_days": 16.69}, {"order_date": "2018-02-12", "order_count": 214, "gross_merchandise_value": 27569.29, "average_order_value": 128.83, "average_delivery_days": 16.55}, {"order_date": "2018-02-13", "order_count": 219, "gross_merchandise_value": 27936.9, "average_order_value": 127.57, "average_delivery_days": 14.72}, {"order_date": "2018-02-14", "order_count": 290, "gross_merchandise_value": 43094.28, "average_order_value": 148.6, "average_delivery_days": 14.98}, {"order_date": "2018-02-15", "order_count": 276, "gross_merchandise_value": 37544.71, "average_order_value": 136.03, "average_delivery_days": 16.0}, {"order_date": "2018-02-16", "order_count": 212, "gross_merchandise_value": 31709.94, "average_order_value": 149.58, "average_delivery_days": 16.6}, {"order_date": "2018-02-17", "order_count": 199, "gross_merchandise_value": 29274.24, "average_order_value": 147.11, "average_delivery_days": 17.2}, {"order_date": "2018-02-18", "order_count": 200, "gross_merchandise_value": 28947.04, "average_order_value": 144.74, "average_delivery_days": 16.0}, {"order_date": "2018-02-19", "order_count": 255, "gross_merchandise_value": 33350.49, "average_order_value": 130.79, "average_delivery_days": 15.67}, {"order_date": "2018-02-20", "order_count": 285, "gross_merchandise_value": 42353.02, "average_order_value": 148.61, "average_delivery_days": 14.71}, {"order_date": "2018-02-21", "order_count": 261, "gross_merchandise_value": 37588.37, "average_order_value": 144.02, "average_delivery_days": 16.51}, {"order_date": "2018-02-22", "order_count": 274, "gross_merchandise_value": 37030.02, "average_order_value": 135.15, "average_delivery_days": 17.42}, {"order_date": "2018-02-23", "order_count": 235, "gross_merchandise_value": 33072.96, "average_order_value": 140.74, "average_delivery_days": 19.05}, {"order_date": "2018-02-24", "order_count": 189, "gross_merchandise_value": 28229.0, "average_order_value": 149.36, "average_delivery_days": 22.44}, {"order_date": "2018-02-25", "order_count": 236, "gross_merchandise_value": 34765.18, "average_order_value": 147.31, "average_delivery_days": 18.91}, {"order_date": "2018-02-26", "order_count": 293, "gross_merchandise_value": 49964.6, "average_order_value": 170.53, "average_delivery_days": 19.53}, {"order_date": "2018-02-27", "order_count": 296, "gross_merchandise_value": 46941.19, "average_order_value": 158.59, "average_delivery_days": 19.16}, {"order_date": "2018-02-28", "order_count": 311, "gross_merchandise_value": 52222.78, "average_order_value": 167.92, "average_delivery_days": 18.11}, {"order_date": "2018-03-01", "order_count": 272, "gross_merchandise_value": 45872.91, "average_order_value": 168.65, "average_delivery_days": 18.08}, {"order_date": "2018-03-02", "order_count": 265, "gross_merchandise_value": 37373.53, "average_order_value": 141.03, "average_delivery_days": 19.78}, {"order_date": "2018-03-03", "order_count": 209, "gross_merchandise_value": 31028.69, "average_order_value": 148.46, "average_delivery_days": 19.68}, {"order_date": "2018-03-04", "order_count": 235, "gross_merchandise_value": 37351.0, "average_order_value": 158.94, "average_delivery_days": 19.02}, {"order_date": "2018-03-05", "order_count": 259, "gross_merchandise_value": 45149.37, "average_order_value": 174.32, "average_delivery_days": 17.73}, {"order_date": "2018-03-06", "order_count": 271, "gross_merchandise_value": 45971.24, "average_order_value": 169.64, "average_delivery_days": 18.12}, {"order_date": "2018-03-07", "order_count": 258, "gross_merchandise_value": 42471.16, "average_order_value": 164.62, "average_delivery_days": 18.5}, {"order_date": "2018-03-08", "order_count": 233, "gross_merchandise_value": 33659.86, "average_order_value": 144.46, "average_delivery_days": 16.96}, {"order_date": "2018-03-09", "order_count": 203, "gross_merchandise_value": 33716.49, "average_order_value": 166.09, "average_delivery_days": 18.53}, {"order_date": "2018-03-10", "order_count": 191, "gross_merchandise_value": 30574.66, "average_order_value": 160.08, "average_delivery_days": 18.88}, {"order_date": "2018-03-11", "order_count": 218, "gross_merchandise_value": 36618.35, "average_order_value": 167.97, "average_delivery_days": 17.44}, {"order_date": "2018-03-12", "order_count": 232, "gross_merchandise_value": 35930.89, "average_order_value": 154.87, "average_delivery_days": 18.05}, {"order_date": "2018-03-13", "order_count": 226, "gross_merchandise_value": 41858.24, "average_order_value": 185.21, "average_delivery_days": 16.67}, {"order_date": "2018-03-14", "order_count": 198, "gross_merchandise_value": 28323.84, "average_order_value": 143.05, "average_delivery_days": 17.19}, {"order_date": "2018-03-15", "order_count": 286, "gross_merchandise_value": 51444.06, "average_order_value": 179.87, "average_delivery_days": 16.79}, {"order_date": "2018-03-16", "order_count": 252, "gross_merchandise_value": 38760.36, "average_order_value": 153.81, "average_delivery_days": 16.13}, {"order_date": "2018-03-17", "order_count": 180, "gross_merchandise_value": 24000.21, "average_order_value": 133.33, "average_delivery_days": 17.05}, {"order_date": "2018-03-18", "order_count": 215, "gross_merchandise_value": 36076.38, "average_order_value": 167.8, "average_delivery_days": 14.21}, {"order_date": "2018-03-19", "order_count": 301, "gross_merchandise_value": 52543.28, "average_order_value": 174.56, "average_delivery_days": 14.66}, {"order_date": "2018-03-20", "order_count": 295, "gross_merchandise_value": 42536.71, "average_order_value": 144.19, "average_delivery_days": 13.81}, {"order_date": "2018-03-21", "order_count": 284, "gross_merchandise_value": 46294.0, "average_order_value": 163.01, "average_delivery_days": 13.37}, {"order_date": "2018-03-22", "order_count": 254, "gross_merchandise_value": 36989.79, "average_order_value": 145.63, "average_delivery_days": 14.05}, {"order_date": "2018-03-23", "order_count": 219, "gross_merchandise_value": 34638.15, "average_order_value": 158.17, "average_delivery_days": 13.11}, {"order_date": "2018-03-24", "order_count": 165, "gross_merchandise_value": 27711.42, "average_order_value": 167.95, "average_delivery_days": 13.85}, {"order_date": "2018-03-25", "order_count": 190, "gross_merchandise_value": 30192.8, "average_order_value": 158.91, "average_delivery_days": 14.15}, {"order_date": "2018-03-26", "order_count": 270, "gross_merchandise_value": 41894.39, "average_order_value": 155.16, "average_delivery_days": 14.31}, {"order_date": "2018-03-27", "order_count": 244, "gross_merchandise_value": 40618.66, "average_order_value": 166.47, "average_delivery_days": 13.58}, {"order_date": "2018-03-28", "order_count": 218, "gross_merchandise_value": 34348.62, "average_order_value": 157.56, "average_delivery_days": 14.0}, {"order_date": "2018-03-29", "order_count": 193, "gross_merchandise_value": 33454.76, "average_order_value": 173.34, "average_delivery_days": 15.84}, {"order_date": "2018-03-30", "order_count": 165, "gross_merchandise_value": 26279.75, "average_order_value": 159.27, "average_delivery_days": 14.78}, {"order_date": "2018-03-31", "order_count": 167, "gross_merchandise_value": 29053.17, "average_order_value": 173.97, "average_delivery_days": 13.47}, {"order_date": "2018-04-01", "order_count": 207, "gross_merchandise_value": 34189.0, "average_order_value": 165.16, "average_delivery_days": 11.61}, {"order_date": "2018-04-02", "order_count": 280, "gross_merchandise_value": 47350.53, "average_order_value": 169.11, "average_delivery_days": 12.6}, {"order_date": "2018-04-03", "order_count": 246, "gross_merchandise_value": 42093.93, "average_order_value": 171.11, "average_delivery_days": 12.51}, {"order_date": "2018-04-04", "order_count": 257, "gross_merchandise_value": 43567.82, "average_order_value": 169.52, "average_delivery_days": 12.07}, {"order_date": "2018-04-05", "order_count": 266, "gross_merchandise_value": 42219.17, "average_order_value": 158.72, "average_delivery_days": 12.01}, {"order_date": "2018-04-06", "order_count": 188, "gross_merchandise_value": 31957.97, "average_order_value": 169.99, "average_delivery_days": 11.81}, {"order_date": "2018-04-07", "order_count": 164, "gross_merchandise_value": 29014.86, "average_order_value": 176.92, "average_delivery_days": 12.32}, {"order_date": "2018-04-08", "order_count": 185, "gross_merchandise_value": 27883.61, "average_order_value": 150.72, "average_delivery_days": 11.6}, {"order_date": "2018-04-09", "order_count": 253, "gross_merchandise_value": 55782.82, "average_order_value": 220.49, "average_delivery_days": 10.59}, {"order_date": "2018-04-10", "order_count": 201, "gross_merchandise_value": 32535.28, "average_order_value": 161.87, "average_delivery_days": 11.35}, {"order_date": "2018-04-11", "order_count": 274, "gross_merchandise_value": 47204.47, "average_order_value": 172.28, "average_delivery_days": 11.08}, {"order_date": "2018-04-12", "order_count": 255, "gross_merchandise_value": 39945.38, "average_order_value": 156.65, "average_delivery_days": 12.41}, {"order_date": "2018-04-13", "order_count": 199, "gross_merchandise_value": 35097.58, "average_order_value": 176.37, "average_delivery_days": 12.31}, {"order_date": "2018-04-14", "order_count": 146, "gross_merchandise_value": 22397.87, "average_order_value": 153.41, "average_delivery_days": 12.86}, {"order_date": "2018-04-15", "order_count": 223, "gross_merchandise_value": 36564.19, "average_order_value": 163.96, "average_delivery_days": 10.6}, {"order_date": "2018-04-16", "order_count": 279, "gross_merchandise_value": 47294.98, "average_order_value": 169.52, "average_delivery_days": 11.12}, {"order_date": "2018-04-17", "order_count": 264, "gross_merchandise_value": 42575.02, "average_order_value": 161.27, "average_delivery_days": 11.45}, {"order_date": "2018-04-18", "order_count": 280, "gross_merchandise_value": 46308.65, "average_order_value": 165.39, "average_delivery_days": 12.26}, {"order_date": "2018-04-19", "order_count": 290, "gross_merchandise_value": 49636.88, "average_order_value": 171.16, "average_delivery_days": 12.16}, {"order_date": "2018-04-20", "order_count": 196, "gross_merchandise_value": 32666.48, "average_order_value": 166.67, "average_delivery_days": 11.5}, {"order_date": "2018-04-21", "order_count": 156, "gross_merchandise_value": 22465.89, "average_order_value": 144.01, "average_delivery_days": 10.56}, {"order_date": "2018-04-22", "order_count": 200, "gross_merchandise_value": 31991.79, "average_order_value": 159.96, "average_delivery_days": 9.89}, {"order_date": "2018-04-23", "order_count": 285, "gross_merchandise_value": 44363.29, "average_order_value": 155.66, "average_delivery_days": 10.65}, {"order_date": "2018-04-24", "order_count": 270, "gross_merchandise_value": 49860.64, "average_order_value": 184.67, "average_delivery_days": 10.78}, {"order_date": "2018-04-25", "order_count": 283, "gross_merchandise_value": 47291.36, "average_order_value": 167.11, "average_delivery_days": 11.07}, {"order_date": "2018-04-26", "order_count": 253, "gross_merchandise_value": 36622.61, "average_order_value": 144.75, "average_delivery_days": 11.13}, {"order_date": "2018-04-27", "order_count": 241, "gross_merchandise_value": 46643.99, "average_order_value": 193.54, "average_delivery_days": 11.98}, {"order_date": "2018-04-28", "order_count": 168, "gross_merchandise_value": 26801.96, "average_order_value": 159.54, "average_delivery_days": 11.33}, {"order_date": "2018-04-29", "order_count": 170, "gross_merchandise_value": 22939.28, "average_order_value": 134.94, "average_delivery_days": 10.89}, {"order_date": "2018-04-30", "order_count": 240, "gross_merchandise_value": 41036.61, "average_order_value": 170.99, "average_delivery_days": 10.2}, {"order_date": "2018-05-01", "order_count": 254, "gross_merchandise_value": 38232.1, "average_order_value": 150.52, "average_delivery_days": 9.79}, {"order_date": "2018-05-02", "order_count": 295, "gross_merchandise_value": 44764.32, "average_order_value": 151.74, "average_delivery_days": 11.34}, {"order_date": "2018-05-03", "order_count": 304, "gross_merchandise_value": 49577.96, "average_order_value": 163.09, "average_delivery_days": 10.97}, {"order_date": "2018-05-04", "order_count": 265, "gross_merchandise_value": 45494.1, "average_order_value": 171.68, "average_delivery_days": 11.2}, {"order_date": "2018-05-05", "order_count": 195, "gross_merchandise_value": 32557.06, "average_order_value": 166.96, "average_delivery_days": 11.0}, {"order_date": "2018-05-06", "order_count": 209, "gross_merchandise_value": 32703.94, "average_order_value": 156.48, "average_delivery_days": 10.27}, {"order_date": "2018-05-07", "order_count": 369, "gross_merchandise_value": 61418.7, "average_order_value": 166.45, "average_delivery_days": 10.02}, {"order_date": "2018-05-08", "order_count": 327, "gross_merchandise_value": 54720.09, "average_order_value": 167.34, "average_delivery_days": 9.6}, {"order_date": "2018-05-09", "order_count": 341, "gross_merchandise_value": 50931.48, "average_order_value": 149.36, "average_delivery_days": 10.79}, {"order_date": "2018-05-10", "order_count": 278, "gross_merchandise_value": 57719.25, "average_order_value": 207.62, "average_delivery_days": 11.09}, {"order_date": "2018-05-11", "order_count": 246, "gross_merchandise_value": 43250.01, "average_order_value": 175.81, "average_delivery_days": 11.51}, {"order_date": "2018-05-12", "order_count": 204, "gross_merchandise_value": 34712.38, "average_order_value": 170.16, "average_delivery_days": 11.6}, {"order_date": "2018-05-13", "order_count": 206, "gross_merchandise_value": 36202.29, "average_order_value": 175.74, "average_delivery_days": 9.97}, {"order_date": "2018-05-14", "order_count": 363, "gross_merchandise_value": 62053.9, "average_order_value": 170.95, "average_delivery_days": 10.13}, {"order_date": "2018-05-15", "order_count": 351, "gross_merchandise_value": 49428.11, "average_order_value": 140.82, "average_delivery_days": 10.61}, {"order_date": "2018-05-16", "order_count": 356, "gross_merchandise_value": 64688.87, "average_order_value": 181.71, "average_delivery_days": 12.15}, {"order_date": "2018-05-17", "order_count": 226, "gross_merchandise_value": 35920.01, "average_order_value": 158.94, "average_delivery_days": 13.9}, {"order_date": "2018-05-18", "order_count": 236, "gross_merchandise_value": 36429.77, "average_order_value": 154.36, "average_delivery_days": 13.45}, {"order_date": "2018-05-19", "order_count": 138, "gross_merchandise_value": 28191.23, "average_order_value": 204.28, "average_delivery_days": 13.92}, {"order_date": "2018-05-20", "order_count": 160, "gross_merchandise_value": 23016.98, "average_order_value": 143.86, "average_delivery_days": 13.95}, {"order_date": "2018-05-21", "order_count": 201, "gross_merchandise_value": 29446.71, "average_order_value": 146.5, "average_delivery_days": 13.37}, {"order_date": "2018-05-22", "order_count": 197, "gross_merchandise_value": 31761.32, "average_order_value": 161.22, "average_delivery_days": 11.91}, {"order_date": "2018-05-23", "order_count": 132, "gross_merchandise_value": 20262.3, "average_order_value": 153.5, "average_delivery_days": 11.7}, {"order_date": "2018-05-24", "order_count": 114, "gross_merchandise_value": 22278.7, "average_order_value": 195.43, "average_delivery_days": 10.65}, {"order_date": "2018-05-25", "order_count": 103, "gross_merchandise_value": 18137.37, "average_order_value": 176.09, "average_delivery_days": 12.34}, {"order_date": "2018-05-26", "order_count": 99, "gross_merchandise_value": 16914.09, "average_order_value": 170.85, "average_delivery_days": 12.94}, {"order_date": "2018-05-27", "order_count": 100, "gross_merchandise_value": 14693.68, "average_order_value": 146.94, "average_delivery_days": 13.19}, {"order_date": "2018-05-28", "order_count": 142, "gross_merchandise_value": 30114.99, "average_order_value": 212.08, "average_delivery_days": 11.21}, {"order_date": "2018-05-29", "order_count": 149, "gross_merchandise_value": 29441.33, "average_order_value": 197.59, "average_delivery_days": 11.25}, {"order_date": "2018-05-30", "order_count": 140, "gross_merchandise_value": 22529.07, "average_order_value": 160.92, "average_delivery_days": 12.92}, {"order_date": "2018-05-31", "order_count": 133, "gross_merchandise_value": 28156.52, "average_order_value": 211.7, "average_delivery_days": 11.58}, {"order_date": "2018-06-01", "order_count": 184, "gross_merchandise_value": 37284.05, "average_order_value": 202.63, "average_delivery_days": 12.15}, {"order_date": "2018-06-02", "order_count": 142, "gross_merchandise_value": 28939.99, "average_order_value": 203.8, "average_delivery_days": 12.25}, {"order_date": "2018-06-03", "order_count": 191, "gross_merchandise_value": 32869.91, "average_order_value": 172.09, "average_delivery_days": 9.21}, {"order_date": "2018-06-04", "order_count": 225, "gross_merchandise_value": 34326.4, "average_order_value": 152.56, "average_delivery_days": 9.36}, {"order_date": "2018-06-05", "order_count": 197, "gross_merchandise_value": 36105.95, "average_order_value": 183.28, "average_delivery_days": 10.02}, {"order_date": "2018-06-06", "order_count": 227, "gross_merchandise_value": 32176.98, "average_order_value": 141.75, "average_delivery_days": 10.91}, {"order_date": "2018-06-07", "order_count": 223, "gross_merchandise_value": 42676.38, "average_order_value": 191.37, "average_delivery_days": 10.01}, {"order_date": "2018-06-08", "order_count": 198, "gross_merchandise_value": 31797.2, "average_order_value": 160.59, "average_delivery_days": 11.3}, {"order_date": "2018-06-09", "order_count": 172, "gross_merchandise_value": 34033.78, "average_order_value": 197.87, "average_delivery_days": 10.46}, {"order_date": "2018-06-10", "order_count": 191, "gross_merchandise_value": 30140.75, "average_order_value": 157.8, "average_delivery_days": 9.19}, {"order_date": "2018-06-11", "order_count": 294, "gross_merchandise_value": 57345.56, "average_order_value": 195.05, "average_delivery_days": 9.13}, {"order_date": "2018-06-12", "order_count": 246, "gross_merchandise_value": 46762.43, "average_order_value": 190.09, "average_delivery_days": 8.6}, {"order_date": "2018-06-13", "order_count": 258, "gross_merchandise_value": 41092.34, "average_order_value": 159.27, "average_delivery_days": 8.74}, {"order_date": "2018-06-14", "order_count": 212, "gross_merchandise_value": 32707.21, "average_order_value": 154.28, "average_delivery_days": 9.24}, {"order_date": "2018-06-15", "order_count": 185, "gross_merchandise_value": 31285.71, "average_order_value": 169.11, "average_delivery_days": 10.12}, {"order_date": "2018-06-16", "order_count": 165, "gross_merchandise_value": 29000.08, "average_order_value": 175.76, "average_delivery_days": 9.45}, {"order_date": "2018-06-17", "order_count": 152, "gross_merchandise_value": 20751.52, "average_order_value": 136.52, "average_delivery_days": 7.84}, {"order_date": "2018-06-18", "order_count": 245, "gross_merchandise_value": 40737.48, "average_order_value": 166.28, "average_delivery_days": 7.5}, {"order_date": "2018-06-19", "order_count": 229, "gross_merchandise_value": 39826.33, "average_order_value": 173.91, "average_delivery_days": 8.22}, {"order_date": "2018-06-20", "order_count": 216, "gross_merchandise_value": 34251.5, "average_order_value": 158.57, "average_delivery_days": 8.54}, {"order_date": "2018-06-21", "order_count": 234, "gross_merchandise_value": 33301.99, "average_order_value": 142.32, "average_delivery_days": 9.45}, {"order_date": "2018-06-22", "order_count": 179, "gross_merchandise_value": 28753.15, "average_order_value": 160.63, "average_delivery_days": 9.11}, {"order_date": "2018-06-23", "order_count": 150, "gross_merchandise_value": 21101.59, "average_order_value": 140.68, "average_delivery_days": 8.96}, {"order_date": "2018-06-24", "order_count": 198, "gross_merchandise_value": 29291.59, "average_order_value": 147.94, "average_delivery_days": 7.53}, {"order_date": "2018-06-25", "order_count": 239, "gross_merchandise_value": 41743.3, "average_order_value": 174.66, "average_delivery_days": 7.23}, {"order_date": "2018-06-26", "order_count": 240, "gross_merchandise_value": 37273.88, "average_order_value": 155.31, "average_delivery_days": 8.31}, {"order_date": "2018-06-27", "order_count": 214, "gross_merchandise_value": 32505.93, "average_order_value": 151.9, "average_delivery_days": 8.75}, {"order_date": "2018-06-28", "order_count": 242, "gross_merchandise_value": 38740.94, "average_order_value": 160.09, "average_delivery_days": 8.51}, {"order_date": "2018-06-29", "order_count": 173, "gross_merchandise_value": 25048.66, "average_order_value": 144.79, "average_delivery_days": 9.1}, {"order_date": "2018-06-30", "order_count": 124, "gross_merchandise_value": 18621.71, "average_order_value": 150.18, "average_delivery_days": 8.78}, {"order_date": "2018-07-01", "order_count": 161, "gross_merchandise_value": 29060.7, "average_order_value": 180.5, "average_delivery_days": 7.66}, {"order_date": "2018-07-02", "order_count": 193, "gross_merchandise_value": 29113.41, "average_order_value": 150.85, "average_delivery_days": 7.33}, {"order_date": "2018-07-03", "order_count": 215, "gross_merchandise_value": 31361.38, "average_order_value": 145.87, "average_delivery_days": 8.06}, {"order_date": "2018-07-04", "order_count": 254, "gross_merchandise_value": 41318.53, "average_order_value": 162.67, "average_delivery_days": 7.51}, {"order_date": "2018-07-05", "order_count": 194, "gross_merchandise_value": 33715.63, "average_order_value": 173.79, "average_delivery_days": 9.08}, {"order_date": "2018-07-06", "order_count": 121, "gross_merchandise_value": 22108.67, "average_order_value": 182.72, "average_delivery_days": 9.55}, {"order_date": "2018-07-07", "order_count": 91, "gross_merchandise_value": 11277.24, "average_order_value": 123.93, "average_delivery_days": 9.02}, {"order_date": "2018-07-08", "order_count": 120, "gross_merchandise_value": 17294.26, "average_order_value": 144.12, "average_delivery_days": 10.35}, {"order_date": "2018-07-09", "order_count": 148, "gross_merchandise_value": 23122.17, "average_order_value": 156.23, "average_delivery_days": 9.55}, {"order_date": "2018-07-10", "order_count": 132, "gross_merchandise_value": 22246.77, "average_order_value": 168.54, "average_delivery_days": 9.2}, {"order_date": "2018-07-11", "order_count": 126, "gross_merchandise_value": 22036.66, "average_order_value": 174.89, "average_delivery_days": 11.94}, {"order_date": "2018-07-12", "order_count": 118, "gross_merchandise_value": 22950.83, "average_order_value": 194.5, "average_delivery_days": 12.5}, {"order_date": "2018-07-13", "order_count": 167, "gross_merchandise_value": 32529.39, "average_order_value": 194.79, "average_delivery_days": 12.05}, {"order_date": "2018-07-14", "order_count": 146, "gross_merchandise_value": 26194.27, "average_order_value": 179.41, "average_delivery_days": 11.73}, {"order_date": "2018-07-15", "order_count": 151, "gross_merchandise_value": 34432.93, "average_order_value": 228.03, "average_delivery_days": 11.18}, {"order_date": "2018-07-16", "order_count": 243, "gross_merchandise_value": 37548.12, "average_order_value": 154.52, "average_delivery_days": 9.51}, {"order_date": "2018-07-17", "order_count": 219, "gross_merchandise_value": 35030.38, "average_order_value": 159.96, "average_delivery_days": 9.47}, {"order_date": "2018-07-18", "order_count": 305, "gross_merchandise_value": 48984.15, "average_order_value": 160.6, "average_delivery_days": 8.99}, {"order_date": "2018-07-19", "order_count": 253, "gross_merchandise_value": 44911.25, "average_order_value": 177.51, "average_delivery_days": 9.07}, {"order_date": "2018-07-20", "order_count": 247, "gross_merchandise_value": 37905.62, "average_order_value": 153.46, "average_delivery_days": 9.35}, {"order_date": "2018-07-21", "order_count": 185, "gross_merchandise_value": 25194.23, "average_order_value": 136.19, "average_delivery_days": 9.01}, {"order_date": "2018-07-22", "order_count": 214, "gross_merchandise_value": 31012.06, "average_order_value": 144.92, "average_delivery_days": 7.82}, {"order_date": "2018-07-23", "order_count": 304, "gross_merchandise_value": 47890.82, "average_order_value": 157.54, "average_delivery_days": 8.02}, {"order_date": "2018-07-24", "order_count": 269, "gross_merchandise_value": 47941.98, "average_order_value": 178.22, "average_delivery_days": 7.81}, {"order_date": "2018-07-25", "order_count": 267, "gross_merchandise_value": 47830.81, "average_order_value": 179.14, "average_delivery_days": 8.41}, {"order_date": "2018-07-26", "order_count": 245, "gross_merchandise_value": 41323.11, "average_order_value": 168.67, "average_delivery_days": 8.11}, {"order_date": "2018-07-27", "order_count": 189, "gross_merchandise_value": 33331.12, "average_order_value": 176.36, "average_delivery_days": 9.15}, {"order_date": "2018-07-28", "order_count": 175, "gross_merchandise_value": 30065.12, "average_order_value": 171.8, "average_delivery_days": 8.75}, {"order_date": "2018-07-29", "order_count": 184, "gross_merchandise_value": 34476.09, "average_order_value": 187.37, "average_delivery_days": 7.52}, {"order_date": "2018-07-30", "order_count": 280, "gross_merchandise_value": 44460.74, "average_order_value": 158.79, "average_delivery_days": 7.98}, {"order_date": "2018-07-31", "order_count": 316, "gross_merchandise_value": 53070.26, "average_order_value": 167.94, "average_delivery_days": 7.78}, {"order_date": "2018-08-01", "order_count": 308, "gross_merchandise_value": 48282.25, "average_order_value": 156.76, "average_delivery_days": 8.79}, {"order_date": "2018-08-02", "order_count": 298, "gross_merchandise_value": 45594.42, "average_order_value": 153.0, "average_delivery_days": 9.12}, {"order_date": "2018-08-03", "order_count": 312, "gross_merchandise_value": 49209.13, "average_order_value": 157.72, "average_delivery_days": 9.43}, {"order_date": "2018-08-04", "order_count": 242, "gross_merchandise_value": 41075.44, "average_order_value": 169.73, "average_delivery_days": 8.95}, {"order_date": "2018-08-05", "order_count": 274, "gross_merchandise_value": 42079.35, "average_order_value": 153.57, "average_delivery_days": 7.93}, {"order_date": "2018-08-06", "order_count": 368, "gross_merchandise_value": 63129.9, "average_order_value": 171.55, "average_delivery_days": 8.41}, {"order_date": "2018-08-07", "order_count": 361, "gross_merchandise_value": 57325.15, "average_order_value": 158.8, "average_delivery_days": 8.25}, {"order_date": "2018-08-08", "order_count": 313, "gross_merchandise_value": 50653.5, "average_order_value": 161.83, "average_delivery_days": 8.16}, {"order_date": "2018-08-09", "order_count": 283, "gross_merchandise_value": 46685.51, "average_order_value": 164.97, "average_delivery_days": 8.39}, {"order_date": "2018-08-10", "order_count": 252, "gross_merchandise_value": 39444.44, "average_order_value": 156.53, "average_delivery_days": 9.23}, {"order_date": "2018-08-11", "order_count": 186, "gross_merchandise_value": 30565.72, "average_order_value": 164.33, "average_delivery_days": 8.59}, {"order_date": "2018-08-12", "order_count": 197, "gross_merchandise_value": 36739.75, "average_order_value": 186.5, "average_delivery_days": 7.85}, {"order_date": "2018-08-13", "order_count": 287, "gross_merchandise_value": 45811.26, "average_order_value": 159.62, "average_delivery_days": 7.44}, {"order_date": "2018-08-14", "order_count": 312, "gross_merchandise_value": 51280.38, "average_order_value": 164.36, "average_delivery_days": 7.82}, {"order_date": "2018-08-15", "order_count": 283, "gross_merchandise_value": 52134.86, "average_order_value": 184.22, "average_delivery_days": 7.65}, {"order_date": "2018-08-16", "order_count": 316, "gross_merchandise_value": 41699.15, "average_order_value": 131.96, "average_delivery_days": 7.67}, {"order_date": "2018-08-17", "order_count": 254, "gross_merchandise_value": 37584.04, "average_order_value": 147.97, "average_delivery_days": 7.82}, {"order_date": "2018-08-18", "order_count": 196, "gross_merchandise_value": 28698.1, "average_order_value": 146.42, "average_delivery_days": 7.54}, {"order_date": "2018-08-19", "order_count": 204, "gross_merchandise_value": 29989.35, "average_order_value": 147.01, "average_delivery_days": 6.74}, {"order_date": "2018-08-20", "order_count": 252, "gross_merchandise_value": 39830.07, "average_order_value": 158.06, "average_delivery_days": 5.9}, {"order_date": "2018-08-21", "order_count": 239, "gross_merchandise_value": 30830.68, "average_order_value": 129.0, "average_delivery_days": 5.58}, {"order_date": "2018-08-22", "order_count": 186, "gross_merchandise_value": 24262.62, "average_order_value": 130.44, "average_delivery_days": 5.72}, {"order_date": "2018-08-23", "order_count": 142, "gross_merchandise_value": 19522.58, "average_order_value": 137.48, "average_delivery_days": 5.5}, {"order_date": "2018-08-24", "order_count": 97, "gross_merchandise_value": 11252.09, "average_order_value": 116.0, "average_delivery_days": 5.17}, {"order_date": "2018-08-25", "order_count": 69, "gross_merchandise_value": 11737.76, "average_order_value": 170.11, "average_delivery_days": 4.23}, {"order_date": "2018-08-26", "order_count": 73, "gross_merchandise_value": 9304.0, "average_order_value": 127.45, "average_delivery_days": 3.33}, {"order_date": "2018-08-27", "order_count": 66, "gross_merchandise_value": 6111.6, "average_order_value": 92.6, "average_delivery_days": 2.47}, {"order_date": "2018-08-28", "order_count": 39, "gross_merchandise_value": 4121.23, "average_order_value": 105.67, "average_delivery_days": 1.83}, {"order_date": "2018-08-29", "order_count": 11, "gross_merchandise_value": 1762.7, "average_order_value": 160.25, "average_delivery_days": 1.0}, {"order_date": "2018-09-03", "order_count": 1, "gross_merchandise_value": 166.46, "average_order_value": 166.46, "average_delivery_days": null}], "delivery": [{"order_status": "delivered", "order_count": 96474, "measured_deliveries": 96466, "average_delivery_days": 12.5, "late_delivery_rate": 0.0811}, {"order_status": "shipped", "order_count": 1107, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}, {"order_status": "canceled", "order_count": 625, "measured_deliveries": 6, "average_delivery_days": 20.33, "late_delivery_rate": 0.1667}, {"order_status": "unavailable", "order_count": 609, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}, {"order_status": "invoiced", "order_count": 314, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}, {"order_status": "processing", "order_count": 301, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}, {"order_status": "created", "order_count": 5, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}, {"order_status": "approved", "order_count": 2, "measured_deliveries": 0, "average_delivery_days": null, "late_delivery_rate": null}]};
+
+  (function () {
+    var D = window.__DASHBOARD__;
+    var BLUE = "#1b48e0";
+    var GRID = "#e8ecf1";
+    var MUTED = "#5b6675";
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    var int = new Intl.NumberFormat("en-US");
+    var money = new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+    var moneyShort = new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2
+    });
+
+    function pct(rate, digits) {
+      return (rate * 100).toFixed(digits === undefined ? 4 : digits) + "%";
+    }
+
+    function ago(iso) {
+      var seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+      if (seconds < 60) return "moments ago";
+      var minutes = Math.round(seconds / 60);
+      if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago");
+      var hours = Math.round(minutes / 60);
+      if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+      return Math.round(hours / 24) + " days ago";
+    }
+
+    function fact(label, value, note) {
+      var box = el("div", "fact");
+      box.appendChild(el("dt", null, label));
+      var dd = el("dd", null, value);
+      if (note) dd.appendChild(el("span", "fact__note", note));
+      box.appendChild(dd);
+      return box;
+    }
+
+    /* ---------- masthead ---------- */
+
+    var run = D.run;
+    var breaker = document.getElementById("breaker");
+    breaker.setAttribute("data-state", run.circuit_breaker);
+    document.getElementById("breaker-value").textContent =
+      run.circuit_breaker === "closed"
+        ? "closed — Silver and Gold published"
+        : "open — Silver and Gold unchanged";
+
+    var facts = document.getElementById("facts");
+    var runDate = new Date(run.run_at);
+    facts.appendChild(fact(
+      "Last run",
+      runDate.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC"),
+      "rendered " + ago(run.run_at)
+    ));
+    facts.appendChild(fact("Duration", run.duration_seconds === null ? "—" : run.duration_seconds + " s"));
+    facts.appendChild(fact("Source", run.input_directory));
+    facts.appendChild(fact("Threshold", pct(run.threshold, 0)));
+    facts.appendChild(fact(
+      "Gold marts",
+      Object.keys(run.gold_marts).length + " published",
+      Object.keys(run.gold_marts).map(function (key) { return key.replace(/_/g, " ") + ": " + run.gold_marts[key]; }).join(", ")
+    ));
+
+    /* ---------- quality score ---------- */
+
+    var scores = document.getElementById("scores");
+    D.datasets.forEach(function (dataset) {
+      var row = el("div", "score");
+      row.setAttribute("data-failed", String(!dataset.threshold_passed));
+
+      var identity = el("div");
+      identity.appendChild(el("div", "score__name", dataset.dataset));
+      identity.appendChild(el("div", "score__threshold", "fails below " + pct(dataset.quality_threshold, 0)));
+      row.appendChild(identity);
+
+      var value = el("div", "score__value", pct(dataset.valid_row_rate));
+      value.appendChild(el("small", null, "valid-row rate"));
+      row.appendChild(value);
+
+      var gauge = el("div", "gauge");
+      var track = el("div", "gauge__track");
+      var fill = el("div", "gauge__fill");
+      fill.style.width = (dataset.valid_row_rate * 100).toFixed(4) + "%";
+      track.appendChild(fill);
+      gauge.appendChild(track);
+      var notch = el("div", "gauge__notch");
+      notch.style.left = (dataset.quality_threshold * 100) + "%";
+      notch.appendChild(el("span", null, pct(dataset.quality_threshold, 0) + " breaker"));
+      gauge.appendChild(notch);
+      var ends = el("div", "gauge__ends");
+      ends.appendChild(el("span", null, "0%"));
+      ends.appendChild(el("span", null, "100%"));
+      gauge.appendChild(ends);
+      row.appendChild(gauge);
+
+      var stats = el("div", "stats");
+      [
+        { label: "rows read", count: dataset.total_rows },
+        { label: "passed", count: dataset.valid_rows },
+        { label: "quarantined", count: dataset.quarantined_rows, tone: "fail" },
+        { label: dataset.warning_count === 1 ? "warning" : "warnings", count: dataset.warning_count, tone: "warn" }
+      ].forEach(function (item) {
+        var stat = el("div");
+        var tone = item.tone && item.count > 0 ? " stat__value--" + item.tone : "";
+        stat.appendChild(el("div", "stat__value" + tone, int.format(item.count)));
+        stat.appendChild(el("div", "stat__label", item.label));
+        stats.appendChild(stat);
+      });
+      row.appendChild(stats);
+
+      scores.appendChild(row);
+    });
+
+    /* ---------- failed rules ---------- */
+
+    var entries = [];
+    D.datasets.forEach(function (dataset) {
+      Object.keys(dataset.failure_counts || {}).forEach(function (reason) {
+        entries.push({ dataset: dataset.dataset, reason: reason, count: dataset.failure_counts[reason] });
+      });
+    });
+
+    var rulesBox = document.getElementById("rules");
+    if (!entries.length) {
+      rulesBox.appendChild(el("div", "empty", "No rule failed in this run. Every row passed the contract."));
+    } else {
+      var max = Math.max.apply(null, entries.map(function (entry) { return entry.count; }));
+      entries.sort(function (a, b) { return b.count - a.count; }).forEach(function (entry) {
+        var row = el("div", "rulebar__row");
+        var label = el("div", "rulebar__label");
+        var text = el("div");
+        text.appendChild(el("span", "rulebar__reason", entry.reason));
+        text.appendChild(el("span", "rulebar__dataset", " (" + entry.dataset + ")"));
+        label.appendChild(text);
+        label.appendChild(el("span", "rulebar__count", int.format(entry.count)));
+        row.appendChild(label);
+        var track = el("div", "rulebar__track");
+        var fill = el("div", "rulebar__fill");
+        fill.style.width = Math.max(6, (entry.count / max) * 100) + "%";
+        track.appendChild(fill);
+        row.appendChild(track);
+        rulesBox.appendChild(row);
+      });
+    }
+
+    var warnings = D.datasets.reduce(function (total, dataset) { return total + dataset.warning_count; }, 0);
+    var quarantined = D.datasets.reduce(function (total, dataset) { return total + dataset.quarantined_rows; }, 0);
+    var notes = document.getElementById("ops-notes");
+    if (quarantined === 0) {
+      notes.appendChild(el("div", "note note--pass", "Nothing was quarantined: all rows met the contract."));
+    } else {
+      notes.appendChild(el("div", "note",
+        int.format(quarantined) + (quarantined === 1 ? " row is" : " rows are") +
+        " held in quarantine with a machine-readable failure reason. " +
+        int.format(warnings) + (warnings === 1 ? " warning-level row stayed" : " warning-level rows stayed") +
+        " in Silver and " + (warnings === 1 ? "is" : "are") + " excluded from delivery measurements."
+      ));
+    }
+
+    /* ---------- quarantine samples ---------- */
+
+    function sampleTitle(label, shown, total) {
+      return shown >= total ? label + " (" + total + ")" : label + " (first " + shown + " of " + total + ")";
+    }
+
+    function sampleTable(target, title, rows, columns) {
+      var box = document.getElementById(target);
+      box.appendChild(el("div", "table-title", title));
+      if (!rows.length) {
+        box.appendChild(el("div", "empty", "Nothing quarantined for this dataset."));
+        return;
+      }
+      var table = el("table");
+      var head = el("thead");
+      var headRow = el("tr");
+      columns.forEach(function (column) {
+        headRow.appendChild(el("th", column.numeric ? "num" : null, column.label));
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+      var body = el("tbody");
+      rows.forEach(function (row) {
+        var tr = el("tr");
+        columns.forEach(function (column) {
+          var className = column.reason ? "reason" : (column.mono ? "mono" : (column.numeric ? "num" : ""));
+          var cell = el("td", className, row[column.key]);
+          if (column.truncate && row[column.key] !== "—") {
+            cell.textContent = row[column.key].slice(0, 12) + "…";
+            cell.title = row[column.key];
+          }
+          tr.appendChild(cell);
+        });
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      box.appendChild(table);
+    }
+
+    sampleTable("sample-orders",
+      sampleTitle("Quarantined orders", D.quarantine_samples.orders.length, D.datasets[0].quarantined_rows),
+      D.quarantine_samples.orders,
+      [
+        { key: "order_id", label: "order id", mono: true, truncate: true },
+        { key: "order_status", label: "status" },
+        { key: "failure_reason", label: "failure reason", reason: true }
+      ]);
+
+    sampleTable("sample-payments",
+      sampleTitle("Quarantined payments", D.quarantine_samples.payments.length, D.datasets[1].quarantined_rows),
+      D.quarantine_samples.payments,
+      [
+        { key: "order_id", label: "order id", mono: true, truncate: true },
+        { key: "payment_value", label: "value", numeric: true },
+        { key: "failure_reason", label: "failure reason", reason: true }
+      ]);
+
+    /* ---------- business outcomes ---------- */
+
+    var gmvTotal = D.daily_sales.reduce(function (total, row) { return total + row.gross_merchandise_value; }, 0);
+    var ordersTotal = D.daily_sales.reduce(function (total, row) { return total + row.order_count; }, 0);
+    var measured = D.delivery.reduce(function (total, row) { return total + row.measured_deliveries; }, 0);
+    var weightedDays = D.delivery.reduce(function (total, row) {
+      return total + (row.average_delivery_days || 0) * row.measured_deliveries;
+    }, 0) / (measured || 1);
+    var weightedLate = D.delivery.reduce(function (total, row) {
+      return total + (row.late_delivery_rate || 0) * row.measured_deliveries;
+    }, 0) / (measured || 1);
+
+    [
+      { value: moneyShort.format(gmvTotal), label: "gross merchandise value" },
+      { value: int.format(ordersTotal), label: "orders counted in sales" },
+      { value: money.format(gmvTotal / ordersTotal), label: "average order value" },
+      { value: weightedDays.toFixed(1) + " days", label: "average delivery time" },
+      { value: (weightedLate * 100).toFixed(1) + "%", label: "delivered after estimate" }
+    ].forEach(function (kpi) {
+      var box = el("div", "kpi");
+      box.appendChild(el("div", "kpi__value", kpi.value));
+      box.appendChild(el("div", "kpi__label", kpi.label));
+      document.getElementById("kpis").appendChild(box);
+    });
+
+    /* ---------- delivery table ---------- */
+
+    (function () {
+      var box = document.getElementById("delivery-table");
+      var table = el("table");
+      var head = el("thead");
+      var headRow = el("tr");
+      [
+        { label: "status" },
+        { label: "orders", numeric: true },
+        { label: "measured", numeric: true },
+        { label: "avg days", numeric: true },
+        { label: "after estimate", numeric: true }
+      ].forEach(function (column) {
+        headRow.appendChild(el("th", column.numeric ? "num" : null, column.label));
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+      var body = el("tbody");
+      D.delivery.forEach(function (row) {
+        var tr = el("tr");
+        tr.appendChild(el("td", null, row.order_status));
+        tr.appendChild(el("td", "num", int.format(row.order_count)));
+        tr.appendChild(el("td", "num", int.format(row.measured_deliveries)));
+        tr.appendChild(el("td", "num", row.average_delivery_days === null ? "—" : row.average_delivery_days.toFixed(1)));
+        tr.appendChild(el("td", "num", row.late_delivery_rate === null ? "—" : (row.late_delivery_rate * 100).toFixed(1) + "%"));
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      box.appendChild(table);
+      box.appendChild(el("p", "table-note",
+        "Measured rows only: deliveries with a timestamp before purchase are excluded, so an impossible date never distorts an average."));
+    })();
+
+    /* ---------- charts ---------- */
+
+    function fallback() {
+      Array.prototype.forEach.call(document.querySelectorAll(".chart-box"), function (box) {
+        box.innerHTML = "";
+        box.appendChild(el("div", "empty",
+          "The charts come from the Chart.js CDN, so this page needs an internet connection the first time it is opened."));
+      });
+    }
+
+    function drawCharts() {
+      if (!window.Chart) { fallback(); return; }
+
+      Chart.defaults.font.family = '"IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+      Chart.defaults.color = MUTED;
+      Chart.defaults.borderColor = GRID;
+
+      new Chart(document.getElementById("gmv-chart"), {
+        type: "line",
+        data: {
+          labels: D.daily_sales.map(function (row) { return row.order_date; }),
+          datasets: [{
+            data: D.daily_sales.map(function (row) { return row.gross_merchandise_value; }),
+            borderColor: BLUE,
+            backgroundColor: "rgba(27,72,224,0.09)",
+            fill: true,
+            borderWidth: 1.6,
+            pointRadius: 0,
+            tension: 0.12
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: function (context) { return money.format(context.parsed.y); }
+          } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 9, maxRotation: 0 } },
+            y: { ticks: { callback: function (value) { return moneyShort.format(value); } } }
+          }
+        }
+      });
+
+      var statuses = D.delivery.slice().sort(function (a, b) { return a.order_count - b.order_count; });
+      new Chart(document.getElementById("status-chart"), {
+        type: "bar",
+        data: {
+          labels: statuses.map(function (row) { return row.order_status; }),
+          datasets: [{
+            data: statuses.map(function (row) { return row.order_count; }),
+            backgroundColor: BLUE,
+            borderWidth: 0,
+            barPercentage: 0.7
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: function (context) { return int.format(context.parsed.x) + " orders"; }
+          } } },
+          scales: {
+            x: {
+              type: "logarithmic",
+              ticks: { callback: function (value) { return int.format(value); }, autoSkip: true, maxTicksLimit: 6, maxRotation: 0 }
+            },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    document.getElementById("generated-at").textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+    window.addEventListener("load", drawCharts);
+  })();
+</script>
+</body>
+</html>

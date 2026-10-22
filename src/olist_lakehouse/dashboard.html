@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olist lakehouse — data quality and business outcomes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<style>
+  :root {
+    --ink: #0d1520;
+    --paper: #f3f5f8;
+    --surface: #ffffff;
+    --rule: #dce1e8;
+    --grid: #e8ecf1;
+    --text: #1b2431;
+    --muted: #5b6675;
+    --blue: #1b48e0;
+    --blue-soft: rgba(27, 72, 224, 0.08);
+    --pass: #0e7a5a;
+    --warn: #b4740b;
+    --fail: #bc2e28;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; }
+  p { margin: 0; }
+
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    background: var(--ink);
+    color: #f4f7fb;
+    padding: 26px 0 20px;
+    border-bottom: 3px solid var(--blue);
+  }
+
+  .masthead__grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .masthead__repo {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #8fa2bd;
+    margin-bottom: 6px;
+  }
+
+  .masthead__sub { color: #a9b6ca; font-size: 14px; margin-top: 6px; }
+
+  .breaker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 2px;
+    font-size: 14px;
+  }
+
+  .breaker__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--pass);
+    box-shadow: 0 0 0 3px rgba(14, 122, 90, 0.3);
+    flex: none;
+  }
+
+  .breaker[data-state="open"] .breaker__dot {
+    background: var(--fail);
+    box-shadow: 0 0 0 3px rgba(188, 46, 40, 0.35);
+  }
+
+  .breaker__label { color: #a9b6ca; }
+  .breaker__value { font-weight: 600; }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 44px;
+    margin: 22px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .fact dt { font-size: 12.5px; color: #8fa2bd; margin-bottom: 3px; }
+  .fact dd { margin: 0; font-family: var(--mono); font-size: 14.5px; }
+  .fact__note { display: block; font-family: var(--sans); font-size: 12px; color: #8fa2bd; }
+
+  /* ---------- sections ---------- */
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 26px 28px 30px;
+    margin-top: 22px;
+  }
+
+  .section__head { margin-bottom: 22px; }
+  .section__head p { color: var(--muted); font-size: 14px; margin-top: 5px; max-width: 74ch; }
+
+  .subhead {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  /* ---------- quality score ---------- */
+
+  .score {
+    display: grid;
+    grid-template-columns: 170px 176px minmax(220px, 1fr) 320px;
+    gap: 26px;
+    align-items: center;
+    padding: 20px 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .score:first-of-type { border-top: none; padding-top: 4px; }
+
+  .score__name { font-family: var(--mono); font-size: 15.5px; font-weight: 500; }
+  .score__threshold { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+  .score__value { font-family: var(--mono); font-size: 31px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .score__value small { display: block; font-family: var(--sans); font-size: 12.5px; font-weight: 400; color: var(--muted); }
+
+  .gauge { position: relative; padding-top: 17px; }
+
+  .gauge__track {
+    position: relative;
+    height: 14px;
+    background: var(--grid);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .gauge__fill { height: 100%; background: var(--pass); }
+  .score[data-failed="true"] .gauge__fill { background: var(--fail); }
+
+  /* Sibling of the clipped track so the marker and its label stay visible. */
+  .gauge__notch {
+    position: absolute;
+    left: 95%;
+    top: 11px;
+    width: 2px;
+    height: 26px;
+    background: var(--fail);
+    z-index: 2;
+  }
+
+  .gauge__notch span {
+    position: absolute;
+    top: -15px;
+    right: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fail);
+    white-space: nowrap;
+  }
+
+  .gauge__ends {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  .stat__value { font-family: var(--mono); font-size: 17px; font-weight: 500; }
+  .stat__value--fail { color: var(--fail); }
+  .stat__value--warn { color: var(--warn); }
+  .stat__label { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+  /* ---------- data operations ---------- */
+
+  .split { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.15fr); gap: 34px; }
+
+  .rulebar { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+  .rulebar__row { display: grid; grid-template-columns: 1fr; gap: 5px; }
+  .rulebar__label { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
+  .rulebar__reason { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  .rulebar__dataset { font-size: 11.5px; color: var(--muted); }
+  .rulebar__count { font-family: var(--mono); font-size: 13px; }
+  .rulebar__track { height: 8px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+  .rulebar__fill { height: 100%; background: var(--fail); }
+  .rulebar__fill--warn { background: var(--warn); }
+
+  .note {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--warn);
+    background: #fdf7ec;
+    font-size: 13.5px;
+    color: #6a4a08;
+  }
+
+  .note--pass { border-left-color: var(--pass); background: #eef7f3; color: #0b5843; }
+
+  /* ---------- tables ---------- */
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+
+  .table-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    padding-bottom: 8px;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+    padding: 6px 16px 6px 0;
+  }
+
+  td {
+    padding: 7px 16px 7px 0;
+    border-bottom: 1px solid var(--grid);
+    vertical-align: top;
+  }
+
+  th:last-child, td:last-child { padding-right: 0; }
+
+  td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  td.reason { font-family: var(--mono); font-size: 12.5px; color: var(--fail); overflow-wrap: anywhere; }
+
+  .table-note {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 10px;
+    max-width: 62ch;
+  }
+
+  .empty {
+    border: 1px dashed var(--rule);
+    color: var(--muted);
+    font-size: 13.5px;
+    padding: 14px 16px;
+  }
+
+  .table-stack { display: grid; gap: 24px; }
+
+  /* ---------- business outcomes ---------- */
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 26px;
+  }
+
+  .kpi { padding: 16px 20px 16px 0; border-left: 1px solid var(--rule); padding-left: 20px; }
+  .kpi:first-child { border-left: none; padding-left: 0; }
+  .kpi__value { font-family: var(--mono); font-size: 23px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kpi__label { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+  .chart-box { position: relative; height: 250px; }
+  .chart-box--tall { height: 270px; }
+
+  .duo { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1fr); gap: 34px; margin-top: 30px; }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 26px 0 44px;
+    max-width: 86ch;
+  }
+
+  footer p + p { margin-top: 6px; }
+  footer code { font-family: var(--mono); font-size: 12.5px; }
+
+  @media (max-width: 980px) {
+    .score { grid-template-columns: 1fr 1fr; gap: 16px 26px; }
+    .score .gauge { grid-column: 1 / -1; }
+    .stats { grid-column: 1 / -1; }
+    .split, .duo { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi { border-left: none; padding-left: 0; border-top: 1px solid var(--rule); }
+    .kpi:first-child { border-top: none; }
+  }
+
+  @media (max-width: 620px) {
+    .score { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .kpis { grid-template-columns: 1fr; }
+    .section { padding: 20px 18px 24px; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .section { break-inside: avoid; border-color: #ccc; }
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="masthead__grid">
+      <div>
+        <div class="masthead__repo">olist-lakehouse</div>
+        <h1>Data quality and business outcomes</h1>
+        <p class="masthead__sub">Bronze, quarantine, Silver, and Gold over the Olist e-commerce extract.</p>
+      </div>
+      <div class="breaker" id="breaker" data-state="closed">
+        <span class="breaker__dot" aria-hidden="true"></span>
+        <span>
+          <span class="breaker__label">Circuit breaker</span><br>
+          <span class="breaker__value" id="breaker-value">—</span>
+        </span>
+      </div>
+    </div>
+    <dl class="facts" id="facts"></dl>
+  </div>
+</header>
+
+<main class="wrap">
+  <noscript><p class="section">This dashboard renders its numbers with JavaScript. Please enable it.</p></noscript>
+
+  <section class="section" aria-labelledby="score-heading">
+    <div class="section__head">
+      <h2 id="score-heading">Quality score</h2>
+      <p>Valid rows per dataset, measured against the circuit-breaker threshold. A run below the threshold publishes Bronze, quarantine, and this report, then stops before overwriting Silver and Gold.</p>
+    </div>
+    <div id="scores"></div>
+  </section>
+
+  <section class="section" aria-labelledby="ops-heading">
+    <div class="section__head">
+      <h2 id="ops-heading">Data operations</h2>
+      <p>What the contract rejected in this run, with the rejected rows kept as evidence in <code>data/quarantine/</code>.</p>
+    </div>
+    <div class="split">
+      <div>
+        <h3 class="subhead">Failed rules</h3>
+        <div class="rulebar" id="rules"></div>
+        <div id="ops-notes"></div>
+      </div>
+      <div class="table-stack">
+        <div id="sample-orders"></div>
+        <div id="sample-payments"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="outcomes-heading">
+    <div class="section__head">
+      <h2 id="outcomes-heading">Business outcomes</h2>
+      <p>What the trusted rows produce once they reach Gold: daily sales, order volume, and delivery performance.</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+
+    <h3 class="subhead">Gross merchandise value per day</h3>
+    <div class="chart-box"><canvas id="gmv-chart" role="img" aria-label="Daily gross merchandise value line chart"></canvas></div>
+
+    <div class="duo">
+      <div>
+        <h3 class="subhead">Orders by status</h3>
+        <div class="chart-box chart-box--tall"><canvas id="status-chart" role="img" aria-label="Orders by status, logarithmic scale"></canvas></div>
+      </div>
+      <div>
+        <h3 class="subhead">Delivery performance by status</h3>
+        <div id="delivery-table"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Generated <span id="generated-at" class="num">—</span> from the artifacts of the run shown above. Every figure on this page comes from <code>data/processed/quality_report.json</code> and the Gold Parquet tables, never from manual entry.</p>
+    <p>Contracts are versioned in <code>contracts/odcs/</code> and tested against the Silver tables by <code>scripts/validate_contracts.sh</code>. Source data: Brazilian E-Commerce Public Dataset by Olist, downloaded from Kaggle.</p>
+  </footer>
+</main>
+
+<script>
+  window.__DASHBOARD__ = __PAYLOAD__;
+
+  (function () {
+    var D = window.__DASHBOARD__;
+    var BLUE = "#1b48e0";
+    var GRID = "#e8ecf1";
+    var MUTED = "#5b6675";
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    var int = new Intl.NumberFormat("en-US");
+    var money = new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+    var moneyShort = new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2
+    });
+
+    function pct(rate, digits) {
+      return (rate * 100).toFixed(digits === undefined ? 4 : digits) + "%";
+    }
+
+    function ago(iso) {
+      var seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+      if (seconds < 60) return "moments ago";
+      var minutes = Math.round(seconds / 60);
+      if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago");
+      var hours = Math.round(minutes / 60);
+      if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+      return Math.round(hours / 24) + " days ago";
+    }
+
+    function fact(label, value, note) {
+      var box = el("div", "fact");
+      box.appendChild(el("dt", null, label));
+      var dd = el("dd", null, value);
+      if (note) dd.appendChild(el("span", "fact__note", note));
+      box.appendChild(dd);
+      return box;
+    }
+
+    /* ---------- masthead ---------- */
+
+    var run = D.run;
+    var breaker = document.getElementById("breaker");
+    breaker.setAttribute("data-state", run.circuit_breaker);
+    document.getElementById("breaker-value").textContent =
+      run.circuit_breaker === "closed"
+        ? "closed — Silver and Gold published"
+        : "open — Silver and Gold unchanged";
+
+    var facts = document.getElementById("facts");
+    var runDate = new Date(run.run_at);
+    facts.appendChild(fact(
+      "Last run",
+      runDate.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC"),
+      "rendered " + ago(run.run_at)
+    ));
+    facts.appendChild(fact("Duration", run.duration_seconds === null ? "—" : run.duration_seconds + " s"));
+    facts.appendChild(fact("Source", run.input_directory));
+    facts.appendChild(fact("Threshold", pct(run.threshold, 0)));
+    facts.appendChild(fact(
+      "Gold marts",
+      Object.keys(run.gold_marts).length + " published",
+      Object.keys(run.gold_marts).map(function (key) { return key.replace(/_/g, " ") + ": " + run.gold_marts[key]; }).join(", ")
+    ));
+
+    /* ---------- quality score ---------- */
+
+    var scores = document.getElementById("scores");
+    D.datasets.forEach(function (dataset) {
+      var row = el("div", "score");
+      row.setAttribute("data-failed", String(!dataset.threshold_passed));
+
+      var identity = el("div");
+      identity.appendChild(el("div", "score__name", dataset.dataset));
+      identity.appendChild(el("div", "score__threshold", "fails below " + pct(dataset.quality_threshold, 0)));
+      row.appendChild(identity);
+
+      var value = el("div", "score__value", pct(dataset.valid_row_rate));
+      value.appendChild(el("small", null, "valid-row rate"));
+      row.appendChild(value);
+
+      var gauge = el("div", "gauge");
+      var track = el("div", "gauge__track");
+      var fill = el("div", "gauge__fill");
+      fill.style.width = (dataset.valid_row_rate * 100).toFixed(4) + "%";
+      track.appendChild(fill);
+      gauge.appendChild(track);
+      var notch = el("div", "gauge__notch");
+      notch.style.left = (dataset.quality_threshold * 100) + "%";
+      notch.appendChild(el("span", null, pct(dataset.quality_threshold, 0) + " breaker"));
+      gauge.appendChild(notch);
+      var ends = el("div", "gauge__ends");
+      ends.appendChild(el("span", null, "0%"));
+      ends.appendChild(el("span", null, "100%"));
+      gauge.appendChild(ends);
+      row.appendChild(gauge);
+
+      var stats = el("div", "stats");
+      [
+        { label: "rows read", count: dataset.total_rows },
+        { label: "passed", count: dataset.valid_rows },
+        { label: "quarantined", count: dataset.quarantined_rows, tone: "fail" },
+        { label: dataset.warning_count === 1 ? "warning" : "warnings", count: dataset.warning_count, tone: "warn" }
+      ].forEach(function (item) {
+        var stat = el("div");
+        var tone = item.tone && item.count > 0 ? " stat__value--" + item.tone : "";
+        stat.appendChild(el("div", "stat__value" + tone, int.format(item.count)));
+        stat.appendChild(el("div", "stat__label", item.label));
+        stats.appendChild(stat);
+      });
+      row.appendChild(stats);
+
+      scores.appendChild(row);
+    });
+
+    /* ---------- failed rules ---------- */
+
+    var entries = [];
+    D.datasets.forEach(function (dataset) {
+      Object.keys(dataset.failure_counts || {}).forEach(function (reason) {
+        entries.push({ dataset: dataset.dataset, reason: reason, count: dataset.failure_counts[reason] });
+      });
+    });
+
+    var rulesBox = document.getElementById("rules");
+    if (!entries.length) {
+      rulesBox.appendChild(el("div", "empty", "No rule failed in this run. Every row passed the contract."));
+    } else {
+      var max = Math.max.apply(null, entries.map(function (entry) { return entry.count; }));
+      entries.sort(function (a, b) { return b.count - a.count; }).forEach(function (entry) {
+        var row = el("div", "rulebar__row");
+        var label = el("div", "rulebar__label");
+        var text = el("div");
+        text.appendChild(el("span", "rulebar__reason", entry.reason));
+        text.appendChild(el("span", "rulebar__dataset", " (" + entry.dataset + ")"));
+        label.appendChild(text);
+        label.appendChild(el("span", "rulebar__count", int.format(entry.count)));
+        row.appendChild(label);
+        var track = el("div", "rulebar__track");
+        var fill = el("div", "rulebar__fill");
+        fill.style.width = Math.max(6, (entry.count / max) * 100) + "%";
+        track.appendChild(fill);
+        row.appendChild(track);
+        rulesBox.appendChild(row);
+      });
+    }
+
+    var warnings = D.datasets.reduce(function (total, dataset) { return total + dataset.warning_count; }, 0);
+    var quarantined = D.datasets.reduce(function (total, dataset) { return total + dataset.quarantined_rows; }, 0);
+    var notes = document.getElementById("ops-notes");
+    if (quarantined === 0) {
+      notes.appendChild(el("div", "note note--pass", "Nothing was quarantined: all rows met the contract."));
+    } else {
+      notes.appendChild(el("div", "note",
+        int.format(quarantined) + (quarantined === 1 ? " row is" : " rows are") +
+        " held in quarantine with a machine-readable failure reason. " +
+        int.format(warnings) + (warnings === 1 ? " warning-level row stayed" : " warning-level rows stayed") +
+        " in Silver and " + (warnings === 1 ? "is" : "are") + " excluded from delivery measurements."
+      ));
+    }
+
+    /* ---------- quarantine samples ---------- */
+
+    function sampleTitle(label, shown, total) {
+      return shown >= total ? label + " (" + total + ")" : label + " (first " + shown + " of " + total + ")";
+    }
+
+    function sampleTable(target, title, rows, columns) {
+      var box = document.getElementById(target);
+      box.appendChild(el("div", "table-title", title));
+      if (!rows.length) {
+        box.appendChild(el("div", "empty", "Nothing quarantined for this dataset."));
+        return;
+      }
+      var table = el("table");
+      var head = el("thead");
+      var headRow = el("tr");
+      columns.forEach(function (column) {
+        headRow.appendChild(el("th", column.numeric ? "num" : null, column.label));
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+      var body = el("tbody");
+      rows.forEach(function (row) {
+        var tr = el("tr");
+        columns.forEach(function (column) {
+          var className = column.reason ? "reason" : (column.mono ? "mono" : (column.numeric ? "num" : ""));
+          var cell = el("td", className, row[column.key]);
+          if (column.truncate && row[column.key] !== "—") {
+            cell.textContent = row[column.key].slice(0, 12) + "…";
+            cell.title = row[column.key];
+          }
+          tr.appendChild(cell);
+        });
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      box.appendChild(table);
+    }
+
+    sampleTable("sample-orders",
+      sampleTitle("Quarantined orders", D.quarantine_samples.orders.length, D.datasets[0].quarantined_rows),
+      D.quarantine_samples.orders,
+      [
+        { key: "order_id", label: "order id", mono: true, truncate: true },
+        { key: "order_status", label: "status" },
+        { key: "failure_reason", label: "failure reason", reason: true }
+      ]);
+
+    sampleTable("sample-payments",
+      sampleTitle("Quarantined payments", D.quarantine_samples.payments.length, D.datasets[1].quarantined_rows),
+      D.quarantine_samples.payments,
+      [
+        { key: "order_id", label: "order id", mono: true, truncate: true },
+        { key: "payment_value", label: "value", numeric: true },
+        { key: "failure_reason", label: "failure reason", reason: true }
+      ]);
+
+    /* ---------- business outcomes ---------- */
+
+    var gmvTotal = D.daily_sales.reduce(function (total, row) { return total + row.gross_merchandise_value; }, 0);
+    var ordersTotal = D.daily_sales.reduce(function (total, row) { return total + row.order_count; }, 0);
+    var measured = D.delivery.reduce(function (total, row) { return total + row.measured_deliveries; }, 0);
+    var weightedDays = D.delivery.reduce(function (total, row) {
+      return total + (row.average_delivery_days || 0) * row.measured_deliveries;
+    }, 0) / (measured || 1);
+    var weightedLate = D.delivery.reduce(function (total, row) {
+      return total + (row.late_delivery_rate || 0) * row.measured_deliveries;
+    }, 0) / (measured || 1);
+
+    [
+      { value: moneyShort.format(gmvTotal), label: "gross merchandise value" },
+      { value: int.format(ordersTotal), label: "orders counted in sales" },
+      { value: money.format(gmvTotal / ordersTotal), label: "average order value" },
+      { value: weightedDays.toFixed(1) + " days", label: "average delivery time" },
+      { value: (weightedLate * 100).toFixed(1) + "%", label: "delivered after estimate" }
+    ].forEach(function (kpi) {
+      var box = el("div", "kpi");
+      box.appendChild(el("div", "kpi__value", kpi.value));
+      box.appendChild(el("div", "kpi__label", kpi.label));
+      document.getElementById("kpis").appendChild(box);
+    });
+
+    /* ---------- delivery table ---------- */
+
+    (function () {
+      var box = document.getElementById("delivery-table");
+      var table = el("table");
+      var head = el("thead");
+      var headRow = el("tr");
+      [
+        { label: "status" },
+        { label: "orders", numeric: true },
+        { label: "measured", numeric: true },
+        { label: "avg days", numeric: true },
+        { label: "after estimate", numeric: true }
+      ].forEach(function (column) {
+        headRow.appendChild(el("th", column.numeric ? "num" : null, column.label));
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+      var body = el("tbody");
+      D.delivery.forEach(function (row) {
+        var tr = el("tr");
+        tr.appendChild(el("td", null, row.order_status));
+        tr.appendChild(el("td", "num", int.format(row.order_count)));
+        tr.appendChild(el("td", "num", int.format(row.measured_deliveries)));
+        tr.appendChild(el("td", "num", row.average_delivery_days === null ? "—" : row.average_delivery_days.toFixed(1)));
+        tr.appendChild(el("td", "num", row.late_delivery_rate === null ? "—" : (row.late_delivery_rate * 100).toFixed(1) + "%"));
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      box.appendChild(table);
+      box.appendChild(el("p", "table-note",
+        "Measured rows only: deliveries with a timestamp before purchase are excluded, so an impossible date never distorts an average."));
+    })();
+
+    /* ---------- charts ---------- */
+
+    function fallback() {
+      Array.prototype.forEach.call(document.querySelectorAll(".chart-box"), function (box) {
+        box.innerHTML = "";
+        box.appendChild(el("div", "empty",
+          "The charts come from the Chart.js CDN, so this page needs an internet connection the first time it is opened."));
+      });
+    }
+
+    function drawCharts() {
+      if (!window.Chart) { fallback(); return; }
+
+      Chart.defaults.font.family = '"IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+      Chart.defaults.color = MUTED;
+      Chart.defaults.borderColor = GRID;
+
+      new Chart(document.getElementById("gmv-chart"), {
+        type: "line",
+        data: {
+          labels: D.daily_sales.map(function (row) { return row.order_date; }),
+          datasets: [{
+            data: D.daily_sales.map(function (row) { return row.gross_merchandise_value; }),
+            borderColor: BLUE,
+            backgroundColor: "rgba(27,72,224,0.09)",
+            fill: true,
+            borderWidth: 1.6,
+            pointRadius: 0,
+            tension: 0.12
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: function (context) { return money.format(context.parsed.y); }
+          } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 9, maxRotation: 0 } },
+            y: { ticks: { callback: function (value) { return moneyShort.format(value); } } }
+          }
+        }
+      });
+
+      var statuses = D.delivery.slice().sort(function (a, b) { return a.order_count - b.order_count; });
+      new Chart(document.getElementById("status-chart"), {
+        type: "bar",
+        data: {
+          labels: statuses.map(function (row) { return row.order_status; }),
+          datasets: [{
+            data: statuses.map(function (row) { return row.order_count; }),
+            backgroundColor: BLUE,
+            borderWidth: 0,
+            barPercentage: 0.7
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: function (context) { return int.format(context.parsed.x) + " orders"; }
+          } } },
+          scales: {
+            x: {
+              type: "logarithmic",
+              ticks: { callback: function (value) { return int.format(value); }, autoSkip: true, maxTicksLimit: 6, maxRotation: 0 }
+            },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    document.getElementById("generated-at").textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+    window.addEventListener("load", drawCharts);
+  })();
+</script>
+</body>
+</html>

@@ -29,3 +29,5 @@ The first dashboard has two views:
 2. **Business outcomes:** daily GMV, orders, average order value, delivery lead time, and delivery-status breakdown. Source: `gold_daily_sales` (time series) and `gold_delivery_performance` (per-status breakdown).
 
 This makes the project demonstrably useful to both Data Engineering and business stakeholders.
+
+The dashboard is one generated HTML file, `docs/generated/dashboard.html`, built by `python -m olist_lakehouse.dashboard`. It embeds the payload of the latest run, so a committed copy always shows the numbers of the run that produced it, and it needs no server or database to open. The score view plots each dataset against the 95% threshold marker so the circuit-breaker margin is visible rather than implied.

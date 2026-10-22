@@ -27,7 +27,7 @@ Gold: daily sales and delivery-performance marts --> BI dashboard
 - Delta Lake / Parquet tables for the lakehouse layers
 - Great Expectations-compatible YAML contracts (initially evaluated by project code)
 - DuckDB for local inspection and dashboard-ready marts
-- Metabase (planned) for the operations and business dashboard
+- A generated static dashboard (`docs/generated/dashboard.html`) covering the operations and business views, built by `python -m olist_lakehouse.dashboard`
 
 ## Data source
 
@@ -79,6 +79,14 @@ This creates `data/raw/olist_demo/` and deliberately adds missing keys, duplicat
 ./scripts/validate_contracts.sh
 ```
 
+### 6. Build the dashboard
+
+```bash
+.venv/bin/python -m olist_lakehouse.dashboard
+```
+
+This writes `docs/generated/dashboard.html`, a self-contained page showing the quality score against the circuit-breaker threshold, failed rules, quarantined-row samples, and the Gold business views. Every number is read from the artifacts of step 4. Open the file in a browser; the two charts load from the Chart.js CDN, so they need an internet connection.
+
 ## Expected result
 
 The pipeline should exit successfully because the injected defects are well below the 95% circuit-breaker threshold. It prints a JSON run report and writes these ignored local artifacts:
@@ -119,13 +127,13 @@ To prove the circuit breaker, temporarily increase the injected bad-record volum
 - [x] Invalid records are written to quarantine with a clear failure reason.
 - [x] Silver orders preserve only valid records and standardize timestamps/types.
 - [x] Gold marts answer daily sales and delivery-performance questions.
-- [ ] Dashboard exposes freshness, quality score, failed-rule counts, quarantine volume, and core sales metrics.
+- [x] Dashboard exposes freshness, quality score, failed-rule counts, quarantine volume, and core sales metrics.
 
 ## Repository map
 
 ```text
 contracts/       Data-quality rules and expected schemas
-docs/            Architecture, decisions, and Notion-ready project narrative
+docs/            Architecture, decisions, Notion-ready narrative, and generated HTML (dashboard and contracts)
 scripts/         Dataset preparation utilities
 src/             Pipeline source code
 tests/           Automated checks
@@ -148,4 +156,4 @@ The HTML document can be committed and hosted with the repository or linked from
 1. [x] Local batch MVP with Olist orders and payments.
 2. [ ] Add the remaining Olist dimensions, more Gold marts, and a PySpark implementation.
 3. [ ] Schedule runs with Airflow and send an alert when a quality threshold is breached.
-4. [ ] Publish the dashboard and write the Notion case study.
+4. [ ] Capture dashboard screenshots and write the Notion case study.

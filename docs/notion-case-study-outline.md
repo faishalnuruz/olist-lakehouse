@@ -22,7 +22,7 @@ Describe the Bronze, Quarantine, Silver, and Gold flow; link to the repository; 
 
 ## Evidence
 
-Include the run summary (`data/processed/quality_report.json`), a sample quarantined row with its `failure_reason`, before/after record counts, the ODCS HTML contract export, and the Gold business dashboard. Screenshots still to capture: the terminal run report, the quarantined-row table, and the dashboard.
+Include the run summary (`data/processed/quality_report.json`), a sample quarantined row with its `failure_reason`, before/after record counts, the ODCS HTML contract export, and screenshots of `docs/generated/dashboard.html` — one of the quality score and operations view, one of the business outcomes view. Still to capture: the terminal run report and the dashboard screenshots.
 
 ## Results
 
@@ -36,4 +36,4 @@ Measured on the full Kaggle extract (99,441 orders, 103,886 payments) plus six d
 - **Gold marts produced:** 2 — `daily_sales` (614 daily rows, 2016-09-04 to 2018-09-03, R$ 15,738,749 GMV) and `delivery_performance` (8 rows, one per order status; 12.5 average delivery days, 8.1% late-delivery rate for delivered orders).
 - **Contract verification:** ODCS lint passes on both contracts; 39 automated checks pass against the Silver Parquet outputs.
 
-Still missing before publishing: dashboard screenshots, and the circuit-breaker demo run above the 5% defect rate.
+Still missing before publishing: dashboard screenshots (both views), the terminal run report, and a circuit-breaker demo run above the 5% defect rate.
