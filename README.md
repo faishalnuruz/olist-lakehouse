@@ -90,6 +90,7 @@ data/processed/
 ├── silver/orders.parquet
 ├── silver/payments.parquet
 ├── gold/daily_sales.parquet
+├── gold/delivery_performance.parquet
 ├── quality_report.csv
 └── quality_report.json
 
@@ -98,18 +99,27 @@ data/quarantine/
 └── payments.parquet
 ```
 
-With the current deterministic demo mutation, expect quarantined order records for missing/duplicate IDs, an invalid status, and a missing purchase time; one negative payment is quarantined. The delivery date before purchase is reported as a warning rather than blocking the record. `validate_contracts.sh` first lints both ODCS YAML files and then reports that both Silver data products comply with their contracts.
+Verified run on the full Kaggle extract (99,441 orders, 103,886 payments) plus the injected defects:
 
-To prove the circuit breaker, temporarily increase the injected bad-record volume above 5% and re-run the pipeline. It will still preserve Bronze and quarantine evidence, but raises `Circuit breaker opened` and prevents a successful downstream run.
+| Dataset | Rows read | Valid | Quarantined | Valid-row rate |
+| --- | --- | --- | --- | --- |
+| orders | 99,446 | 99,437 | 9 | 99.9909% |
+| payments | 103,887 | 103,886 | 1 | 99.9990% |
+
+The 9 quarantined order rows are `duplicate:order_id` (6), `required:order_id` (1), `duplicate:order_id;invalid_value:order_status` (1), and `duplicate:order_id;required:order_purchase_timestamp` (1). Duplicating a key quarantines *both* copies, because the pipeline has no survivorship rule for deciding which record is authoritative — that is a deliberate, documented limitation. One negative payment is quarantined as `below_minimum:payment_value`. The delivery date before purchase is reported as a warning (1 on orders) rather than blocking the record.
+
+Gold produces 614 daily-sales rows (2016-09-04 → 2018-09-03, R$ 15,738,749 total GMV) and 8 delivery-performance rows, one per order status. The whole run takes under 2 seconds on a laptop (1.3–2.1 s across runs: ingest → contract evaluation → quarantine → Silver → Gold → run report). `validate_contracts.sh` first lints both ODCS YAML files and then runs 39 checks that both Silver data products comply with their contracts.
+
+To prove the circuit breaker, temporarily increase the injected bad-record volume above 5% and re-run the pipeline. It still writes Bronze, the quarantine tables, and a quality report marked `"circuit_breaker": "open"`, raises `Circuit breaker opened`, and leaves the Silver and Gold tables published by the last healthy run untouched.
 
 ## MVP success criteria
 
-- Raw source files are ingested into a Bronze layer without overwriting inputs.
-- The orders contract catches null keys, invalid statuses, invalid timestamps, negative payment values, and duplicated order IDs.
-- Invalid records are written to quarantine with a clear failure reason.
-- Silver orders preserve only valid records and standardize timestamps/types.
-- Gold marts answer daily sales and delivery-performance questions.
-- Dashboard exposes freshness, quality score, failed-rule counts, quarantine volume, and core sales metrics.
+- [x] Raw source files are ingested into a Bronze layer without overwriting inputs.
+- [x] The orders contract catches null keys, invalid statuses, invalid timestamps, negative payment values, and duplicated order IDs.
+- [x] Invalid records are written to quarantine with a clear failure reason.
+- [x] Silver orders preserve only valid records and standardize timestamps/types.
+- [x] Gold marts answer daily sales and delivery-performance questions.
+- [ ] Dashboard exposes freshness, quality score, failed-rule counts, quarantine volume, and core sales metrics.
 
 ## Repository map
 
@@ -135,7 +145,7 @@ The HTML document can be committed and hosted with the repository or linked from
 
 ## Roadmap
 
-1. Local batch MVP with Olist orders and payments.
-2. Add the remaining Olist dimensions, Gold marts, and a PySpark implementation.
-3. Schedule runs with Airflow and send an alert when a quality threshold is breached.
-4. Publish the dashboard and write the Notion case study.
+1. [x] Local batch MVP with Olist orders and payments.
+2. [ ] Add the remaining Olist dimensions, more Gold marts, and a PySpark implementation.
+3. [ ] Schedule runs with Airflow and send an alert when a quality threshold is breached.
+4. [ ] Publish the dashboard and write the Notion case study.

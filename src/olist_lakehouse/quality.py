@@ -26,8 +26,9 @@ def validate_dataframe(frame: pd.DataFrame, contract: dict) -> ValidationResult:
 
     def add_reason(mask: pd.Series, reason: str) -> None:
         nonlocal reasons
-        reasons = reasons.mask(mask & reasons.eq(""), reason)
-        reasons = reasons.mask(mask & reasons.ne(""), reasons + ";" + reason)
+        was_empty = reasons.eq("")
+        reasons = reasons.mask(mask & was_empty, reason)
+        reasons = reasons.mask(mask & ~was_empty, reasons + ";" + reason)
 
     for column, rules in contract["columns"].items():
         if column not in frame.columns:

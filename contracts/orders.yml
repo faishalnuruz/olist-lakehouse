@@ -23,6 +23,8 @@ columns:
     type: timestamp
   order_delivered_customer_date:
     type: timestamp
+  order_estimated_delivery_date:
+    type: timestamp
 rules:
   - name: delivery_after_purchase
     expression: order_delivered_customer_date >= order_purchase_timestamp

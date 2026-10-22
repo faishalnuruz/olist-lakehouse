@@ -54,6 +54,8 @@ schema:
         required: true
       - name: order_delivered_customer_date
         logicalType: timestamp
+      - name: order_estimated_delivery_date
+        logicalType: timestamp
       - name: _ingested_at
         logicalType: timestamp
         required: true
