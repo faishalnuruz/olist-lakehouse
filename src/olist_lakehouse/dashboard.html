@@ -470,7 +470,7 @@
     facts.appendChild(fact(
       "Last run",
       runDate.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC"),
-      "rendered " + ago(run.run_at)
+      ago(run.run_at)
     ));
     facts.appendChild(fact("Duration", run.duration_seconds === null ? "—" : run.duration_seconds + " s"));
     facts.appendChild(fact("Source", run.input_directory));

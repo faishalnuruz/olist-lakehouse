@@ -118,7 +118,15 @@ The 9 quarantined order rows are `duplicate:order_id` (6), `required:order_id` (
 
 Gold produces 614 daily-sales rows (2016-09-04 → 2018-09-03, R$ 15,738,749 total GMV) and 8 delivery-performance rows, one per order status. The whole run takes under 2 seconds on a laptop (1.3–2.1 s across runs: ingest → contract evaluation → quarantine → Silver → Gold → run report). `validate_contracts.sh` first lints both ODCS YAML files and then runs 39 checks that both Silver data products comply with their contracts.
 
-To prove the circuit breaker, temporarily increase the injected bad-record volume above 5% and re-run the pipeline. It still writes Bronze, the quarantine tables, and a quality report marked `"circuit_breaker": "open"`, raises `Circuit breaker opened`, and leaves the Silver and Gold tables published by the last healthy run untouched.
+To prove the circuit breaker, build an input that fails on purpose and run the pipeline against it:
+
+```bash
+.venv/bin/python scripts/inject_quality_issues.py --circuit-breaker
+.venv/bin/python -m olist_lakehouse.pipeline --input-dir data/raw/olist_breaker
+.venv/bin/python -m olist_lakehouse.pipeline   # healthy run restores the published tables
+```
+
+The failing run exits with code 1 and `Circuit breaker opened: quality threshold failed for orders` (93.9663% valid, below the 95% threshold). It writes Bronze, the quarantine tables, and a quality report marked `"circuit_breaker": "open"` with `"gold_marts": {}`, and leaves the Silver and Gold tables published by the last healthy run untouched — verified byte-for-byte with MD5 in [`docs/evidence/circuit-breaker.md`](docs/evidence/circuit-breaker.md).
 
 ## Dashboard
 
@@ -127,6 +135,12 @@ Step 6 writes `docs/generated/dashboard.html`. Two committed screenshots show wh
 ![Quality score and data operations view](docs/screenshots/dashboard-quality.png)
 
 ![Full dashboard with business outcomes](docs/screenshots/dashboard-full.png)
+
+## Evidence
+
+- [`docs/evidence/pipeline-run.md`](docs/evidence/pipeline-run.md) — the healthy run report, verbatim, with the contract-test output and the artifacts it produced.
+- [`docs/evidence/circuit-breaker.md`](docs/evidence/circuit-breaker.md) — a deliberate >5% failure, including MD5 proof that Silver and Gold were left untouched and the run report that recorded the open breaker.
+- `docs/screenshots/` — the two dashboard views above, plus terminal transcripts of both runs.
 
 ## MVP success criteria
 
@@ -141,7 +155,7 @@ Step 6 writes `docs/generated/dashboard.html`. Two committed screenshots show wh
 
 ```text
 contracts/       Data-quality rules and expected schemas
-docs/            Architecture, decisions, Notion-ready narrative, and generated HTML (dashboard and contracts)
+docs/            Architecture, decisions, Notion-ready narrative, evidence transcripts, and generated HTML (dashboard and contracts)
 scripts/         Dataset preparation utilities
 src/             Pipeline source code
 tests/           Automated checks
