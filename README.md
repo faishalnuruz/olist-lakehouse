@@ -120,6 +120,14 @@ Gold produces 614 daily-sales rows (2016-09-04 → 2018-09-03, R$ 15,738,749 tot
 
 To prove the circuit breaker, temporarily increase the injected bad-record volume above 5% and re-run the pipeline. It still writes Bronze, the quarantine tables, and a quality report marked `"circuit_breaker": "open"`, raises `Circuit breaker opened`, and leaves the Silver and Gold tables published by the last healthy run untouched.
 
+## Dashboard
+
+Step 6 writes `docs/generated/dashboard.html`. Two committed screenshots show what it renders:
+
+![Quality score and data operations view](docs/screenshots/dashboard-quality.png)
+
+![Full dashboard with business outcomes](docs/screenshots/dashboard-full.png)
+
 ## MVP success criteria
 
 - [x] Raw source files are ingested into a Bronze layer without overwriting inputs.
