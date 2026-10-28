@@ -1,4 +1,5 @@
 # Olist Lakehouse: Data Quality Contracts
+[![CI](https://github.com/faishalnuruz/olist-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/faishalnuruz/olist-lakehouse/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 An end-to-end local data engineering project using the public Olist Brazilian E-Commerce dataset. The pipeline turns raw CSV extracts into governed Bronze, Silver, and Gold tables while isolating invalid records instead of silently loading them.
 
