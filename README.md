@@ -173,9 +173,23 @@ The formal data product contracts are the ODCS files in `contracts/odcs/`. The f
 
 The HTML document can be committed and hosted with the repository or linked from the Notion case study.
 
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q     # 7 passing
+.venv/bin/ruff check .
+```
+
+The suite is self-contained: every test builds its own source data in a temp directory, so a fresh
+clone runs it without the pipeline's `data/` folder.
+
 ## Roadmap
 
 1. [x] Local batch MVP with Olist orders and payments.
-2. [ ] Add the remaining Olist dimensions, more Gold marts, and a PySpark implementation.
-3. [ ] Schedule runs with Airflow and send an alert when a quality threshold is breached.
+2. [ ] Add the remaining Olist dimensions, more Gold marts, and a PySpark implementation —
+   skew and partition pruning are measured in
+   [pyspark-performance-tuning](https://github.com/faishalnuruz/pyspark-performance-tuning).
+3. [ ] Schedule runs with Airflow and send an alert when a quality threshold is breached —
+   the alerting pattern is built in
+   [aiops-pipeline-alerts](https://github.com/faishalnuruz/aiops-pipeline-alerts).
 4. [ ] Capture dashboard screenshots and write the Notion case study.
